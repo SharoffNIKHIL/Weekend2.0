@@ -154,7 +154,9 @@ resource "aws_lambda_function" "api" {
 resource "aws_lambda_function_url" "api" {
   function_name      = aws_lambda_function.api.function_name
   authorization_type = "AWS_IAM" # unsigned requests are rejected; only allowed IAM principals can call
-  invoke_mode        = "RESPONSE_STREAM"
+  # BUFFERED: Lambda streams natively only on Node.js managed runtimes. Python needs the
+  # Lambda Web Adapter or a custom runtime, which is a Phase 1 decision (see infra/README.md).
+  invoke_mode = "BUFFERED"
 }
 
 # ---------- worker function ----------
@@ -179,9 +181,30 @@ data "aws_iam_policy_document" "worker" {
   }
 
   statement {
-    sid       = "WriteBackupObjects"
-    actions   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
-    resources = [var.backup_bucket_arn, "${var.backup_bucket_arn}/*"]
+    sid       = "ListBackupBucket"
+    actions   = ["s3:ListBucket"]
+    resources = [var.backup_bucket_arn]
+  }
+
+  statement {
+    sid     = "WriteBackupObjects"
+    actions = ["s3:PutObject", "s3:GetObject"]
+    resources = [
+      "${var.backup_bucket_arn}/daily/*",
+      "${var.backup_bucket_arn}/monthly/*",
+      "${var.backup_bucket_arn}/audit/*",
+    ]
+  }
+
+  # The bucket default lock is 35 days. monthly/ (365 d) and audit/ (730 d) objects are
+  # written with a per-object retain-until date that matches their lifecycle (P8/P10).
+  statement {
+    sid     = "SetLongRetentionOnKeptCopies"
+    actions = ["s3:PutObjectRetention"]
+    resources = [
+      "${var.backup_bucket_arn}/monthly/*",
+      "${var.backup_bucket_arn}/audit/*",
+    ]
   }
 }
 

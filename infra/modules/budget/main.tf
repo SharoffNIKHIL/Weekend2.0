@@ -1,5 +1,7 @@
 # infra/modules/budget/main.tf
 # Monthly cost budget with e-mail alerts at 50/80/100% actual and 100% forecast.
+# No cost_types block, so include_tax = true: the limit is compared with the
+# tax-inclusive bill (AWS India / AISPL adds 18% GST), i.e. the owner's real spend.
 
 resource "aws_budgets_budget" "monthly" {
   name         = "${var.name_prefix}-monthly"

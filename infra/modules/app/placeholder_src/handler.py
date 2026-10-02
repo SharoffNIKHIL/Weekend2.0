@@ -22,7 +22,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Scheduled jobs entry point (EventBridge Scheduler)."""
+    """Scheduled jobs entry point (EventBridge Scheduler).
+
+    Phase 1 contract: writes to monthly/ and audit/ in the backup bucket must pass
+    ObjectLockMode="GOVERNANCE" and ObjectLockRetainUntilDate (now + 365 d / 730 d).
+    """
     job = event.get("job", "unknown") if isinstance(event, dict) else "unknown"
     logger.info("placeholder worker job=%s", job)
     return {"job": job, "status": "placeholder"}

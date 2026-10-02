@@ -1,6 +1,9 @@
 # infra/modules/backup/main.tf
 # Bucket for data exports (P6), audit-log copies (P8) and restore drills (P10).
-# Object Lock (governance mode) makes copies tamper-resistant for the retention period.
+# Object Lock (governance mode): the bucket default (35 days) covers daily/ copies. The
+# worker sets a per-object retain-until date on monthly/ (365 d) and audit/ (730 d), so
+# those stay locked for their whole lifecycle. P6 purges of locked versions are an
+# owner-only admin action with --bypass-governance-retention (see infra/README.md).
 
 resource "aws_s3_bucket" "this" {
   bucket              = "${var.name_prefix}-backups-${var.account_id}"
@@ -89,7 +92,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     }
 
     noncurrent_version_expiration {
-      noncurrent_days = 1
+      noncurrent_days = 30 # an overwrite stays recoverable for 30 days
     }
   }
 
@@ -106,7 +109,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     }
 
     noncurrent_version_expiration {
-      noncurrent_days = 1
+      noncurrent_days = 30 # an overwrite stays recoverable for 30 days
     }
   }
 }

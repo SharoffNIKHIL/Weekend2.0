@@ -1,0 +1,30 @@
+// infra/tailscale/policy.hujson
+// Tailnet policy for Weekend 2.0 (P1 single-owner, P9 minimal surface).
+// Paste into Tailscale admin console > Access controls BEFORE the entry node first boots.
+// It REPLACES the default allow-all policy. Replace <OWNER_LOGIN> with your Tailscale
+// login (e.g. you@example.com); do not commit the real value.
+{
+  // Only admins may create devices tagged tag:weekend (needed for --advertise-tags).
+  "tagOwners": {
+    "tag:weekend": ["autogroup:admin"],
+  },
+
+  // The owner's own devices may reach the entry node on HTTPS only. No other grants:
+  // tagged nodes cannot reach anything, and no other user can reach tag:weekend.
+  "grants": [
+    {
+      "src": ["<OWNER_LOGIN>"],
+      "dst": ["tag:weekend"],
+      "ip":  ["tcp:443"],
+    },
+  ],
+
+  // Policy self-tests: the save is rejected if these fail.
+  "tests": [
+    {
+      "src":    "<OWNER_LOGIN>",
+      "accept": ["tag:weekend:443"],
+      "deny":   ["tag:weekend:22"],
+    },
+  ],
+}

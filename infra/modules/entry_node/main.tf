@@ -76,15 +76,30 @@ data "aws_iam_policy_document" "entry" {
     resources = [var.kms_key_arn]
   }
 
+  # Since Oct 2025 an AWS_IAM Function URL needs BOTH actions. Each one uses its own
+  # documented condition key (AWS Lambda docs: urls-auth). InvokedViaFunctionUrl stops
+  # this role from calling the plain Invoke API and skipping the URL path.
   statement {
     sid       = "CallApiFunctionUrl"
-    actions   = ["lambda:InvokeFunctionUrl", "lambda:InvokeFunction"]
+    actions   = ["lambda:InvokeFunctionUrl"]
     resources = [var.api_function_arn]
 
     condition {
       test     = "StringEquals"
       variable = "lambda:FunctionUrlAuthType"
       values   = ["AWS_IAM"]
+    }
+  }
+
+  statement {
+    sid       = "InvokeApiOnlyViaFunctionUrl"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.api_function_arn]
+
+    condition {
+      test     = "Bool"
+      variable = "lambda:InvokedViaFunctionUrl"
+      values   = ["true"]
     }
   }
 }

@@ -18,6 +18,10 @@ __pycache__/
 !*.tfvars.example
 backend.hcl
 crash.log
+# Terraform saved plans hold variable values (account ID, e-mail) in cleartext
+tfplan
+*.tfplan
+*.plan
 infra/modules/app/.build/
 # Office lock files
 ~$*
