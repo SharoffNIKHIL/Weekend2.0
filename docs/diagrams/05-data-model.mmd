@@ -1,0 +1,67 @@
+%% Weekend 2.0 - Data model (DESIGN.md section 9.3). FigJam: https://www.figma.com/board/pMvZioGximavxDcsD14Ee9
+erDiagram
+  OWNER ||--|{ PASSKEY_CREDENTIAL : registers
+  PASSKEY_CREDENTIAL ||--o{ SESSION : opens
+  OWNER ||--o{ CONVERSATION : has
+  CONVERSATION ||--o{ MESSAGE : contains
+  MESSAGE ||--o{ TOOL_CALL : triggers
+  MESSAGE ||--o{ MEMORY : "source of"
+  OWNER ||--o{ REMINDER : sets
+  OWNER ||--o{ CONNECTOR_ACCOUNT : connects
+  OWNER {
+    string id PK
+    string display_name
+  }
+  PASSKEY_CREDENTIAL {
+    string credential_id PK
+    bytes public_key
+    int sign_count
+    string device_label
+  }
+  SESSION {
+    string id PK
+    datetime expires_at
+    bool revoked
+  }
+  CONVERSATION {
+    string id PK
+    string title
+  }
+  MESSAGE {
+    string id PK
+    string role
+    text content
+    string model
+    float cost_usd
+  }
+  MEMORY {
+    string id PK
+    text text
+    string kind
+    vector embedding
+    bool pinned
+    datetime expires_at
+  }
+  TOOL_CALL {
+    string id PK
+    string tool
+    bool confirmed_by_owner
+  }
+  REMINDER {
+    string id PK
+    datetime due_at
+    string rrule
+  }
+  CONNECTOR_ACCOUNT {
+    string id PK
+    string provider
+    string scopes
+    string secret_ref
+  }
+  AUDIT_LOG {
+    string id PK
+    datetime ts
+    string action
+    string hash_prev
+    string hash_self
+  }

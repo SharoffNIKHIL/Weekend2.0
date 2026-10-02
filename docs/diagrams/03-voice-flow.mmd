@@ -1,0 +1,21 @@
+%% Weekend 2.0 - Voice request flow. FigJam: https://www.figma.com/board/pMvZioGximavxDcsD14Ee9
+sequenceDiagram
+  title Voice request flow - push to talk
+  participant Owner
+  participant PhonePWA
+  participant API
+  participant VoiceWorker
+  participant AgentCore
+  participant Bedrock
+  Owner->>PhonePWA: Hold to talk
+  PhonePWA->>API: Upload audio clip
+  API->>VoiceWorker: Transcribe
+  VoiceWorker-->>API: Text, raw audio discarded
+  API->>AgentCore: Run chat turn
+  AgentCore->>Bedrock: Prompt, stream
+  Bedrock-->>AgentCore: Answer sentences
+  AgentCore-->>API: Sentence by sentence
+  API->>VoiceWorker: Synthesize sentence
+  VoiceWorker-->>API: Audio chunk
+  API-->>PhonePWA: Stream audio and text
+  PhonePWA-->>Owner: Play reply

@@ -1,0 +1,22 @@
+%% Weekend 2.0 - Text chat request flow. FigJam: https://www.figma.com/board/pMvZioGximavxDcsD14Ee9
+sequenceDiagram
+  title Text chat request flow
+  participant Owner
+  participant PhonePWA
+  participant API
+  participant Postgres
+  participant Bedrock
+  participant CalendarAPI
+  Owner->>PhonePWA: Type message
+  PhonePWA->>API: POST /chat over tailnet
+  API->>Postgres: Check session, load history and memories
+  Postgres-->>API: Context rows
+  API->>Bedrock: Prompt with tools, stream
+  Bedrock-->>API: Tool call calendar.list_events
+  API->>CalendarAPI: Read-only events query
+  CalendarAPI-->>API: Events
+  API->>Bedrock: Tool result
+  Bedrock-->>API: Streamed answer
+  API-->>PhonePWA: SSE stream
+  API->>Postgres: Save turn, memories, audit entry
+  PhonePWA-->>Owner: Show answer

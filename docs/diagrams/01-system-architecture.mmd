@@ -1,0 +1,39 @@
+%% Weekend 2.0 - System Architecture (provisional). FigJam: https://www.figma.com/board/pMvZioGximavxDcsD14Ee9
+flowchart LR
+  subgraph client ["Owner Devices"]
+    phonePwa["iPhone PWA"]
+    macBrowser["Mac Browser"]
+  end
+  subgraph gateway ["Private Entry - no public ports"]
+    privateEntry["Tailnet + Caddy HTTPS"]
+  end
+  subgraph service ["Weekend Server - EC2 t4g ap-south-1"]
+    apiServer["FastAPI API - auth, chat, memory"]
+    agentCore["Agent Core - LLM loop, tools"]
+    voiceWorker["Voice Worker - STT, TTS"]
+    scheduler["Scheduler - reminders, retention, backups"]
+  end
+  subgraph datastore ["Data - KMS encrypted"]
+    postgres["PostgreSQL + pgvector"]
+    s3Backups["S3 Backups - Object Lock"]
+    secrets["AWS Secrets Manager"]
+  end
+  subgraph external ["Outside Services - data exits"]
+    bedrock["Amazon Bedrock Claude - India profile"]
+    google["Google Calendar and Gmail"]
+    push["Apple and Google Push"]
+  end
+  phonePwa -->|"HTTPS over WireGuard"| privateEntry
+  macBrowser -->|"HTTPS over WireGuard"| privateEntry
+  privateEntry -->|"Routes /api"| apiServer
+  apiServer -->|"Runs turn"| agentCore
+  apiServer <-->|"Audio in, text and speech out"| voiceWorker
+  apiServer -->|"Schedules reminders"| scheduler
+  apiServer -->|"Sessions, passkeys"| postgres
+  agentCore -->|"History, memories"| postgres
+  agentCore -->|"Connector tokens"| secrets
+  agentCore -.->|"Bedrock: Inference"| bedrock
+  agentCore -.->|"Google: Read-only"| google
+  scheduler -->|"Reminders, cleanup"| postgres
+  scheduler -->|"Nightly dumps"| s3Backups
+  scheduler -.->|"Push: Notify"| push

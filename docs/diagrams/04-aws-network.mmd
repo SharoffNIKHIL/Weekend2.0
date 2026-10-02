@@ -1,0 +1,24 @@
+%% Weekend 2.0 - AWS network and access. FigJam: https://www.figma.com/board/pMvZioGximavxDcsD14Ee9
+flowchart LR
+  subgraph devices ["Owner Devices"]
+    iphone["iPhone PWA"]
+    mac["Mac"]
+  end
+  subgraph aws ["AWS ap-south-1 Mumbai"]
+    subgraph vpc ["VPC 10.20.0.0/16"]
+      subgraph pubSubnet ["Public subnet - egress only"]
+        ec2["EC2 t4g.medium - inbound rules: none"]
+      end
+      s3Endpoint["S3 gateway endpoint"]
+    end
+    s3[("S3 backups - KMS, Object Lock")]
+    awsApis["Bedrock, Secrets Manager, KMS, SSM"]
+  end
+  tailscale(("Tailscale coordination"))
+  iphone <-->|"WireGuard"| ec2
+  mac <-->|"WireGuard"| ec2
+  ec2 -.->|"Keys and metadata only"| tailscale
+  ec2 --> s3Endpoint
+  s3Endpoint --> s3
+  ec2 -->|"HTTPS 443"| awsApis
+  mac -.->|"Admin via SSM"| awsApis
