@@ -11,6 +11,7 @@ Your phone and Mac reach a **t4g.nano entry node** over the Tailscale tailnet. T
 ```
 infra/
 ├── bootstrap/            # remote-state bucket (local state, run once)
+├── scripts/plan_env.py   # terraform plan → masked Markdown report for PRs (nothing applied)
 ├── envs/dev/             # dev: same modules, free-tier sizing, destroyable (see "Dev environment")
 ├── envs/prod/            # prod: wires the modules together
 └── modules/
@@ -90,19 +91,19 @@ If the entry node still came up without the key, it retries for about 20 minutes
 
 
 ## Dev environment (`envs/dev`)
-Same modules as prod, sized to cost almost nothing and to be torn down. **Never put real personal data in dev.**
+Same modules **and the same normal (non-free-tier) sizing** as prod. Dev runs only when needed: stop the node between sessions and destroy the environment when idle. **Never put real personal data in dev.**
 
 | Setting | Dev | Prod | Why |
 |---|---|---|---|
 | Name prefix / VPC | `weekend2-dev` / 10.30.0.0/16 | `weekend2-prod` / 10.20.0.0/16 | Both can exist side by side |
-| Entry node | `t4g.small`, tailnet `node-d1`, `tag:weekend-dev`; can be switched off | `t4g.nano`, `node-a1`, `tag:weekend` | EC2 T4g free trial: 750 h/month of t4g.small, ap-south-1 included, **until 2026-12-31** |
-| Aurora | 0–1 ACU, 1-day backups, no deletion protection, no final snapshot | 0–2 ACU, 7 days, protected | Destroyable |
+| Entry node | `t4g.nano` on demand, tailnet `node-d1`, `tag:weekend-dev`; can be switched off | `t4g.nano`, `node-a1`, `tag:weekend` | Same instance; separate tag so dev can't reach prod |
+| Aurora | 0–2 ACU, 1-day backups, no deletion protection, no final snapshot | 0–2 ACU, 7 days, protected | Destroyable |
 | KMS / secrets | 7-day key deletion window; secrets deleted at once; no Google connector secret | 30 days / 7 days / 3 secrets | Fast destroy and re-apply |
 | Backup bucket | 1-day default lock, `force_destroy` | 35 days, protected | Destroy can empty it |
-| Logs / Claude | 3 days, DEBUG / Haiku 4.5 for both slots | 14 days, INFO / Haiku + Sonnet | Cost |
+| Logs / Claude | 3 days, DEBUG / Haiku + Sonnet | 14 days, INFO / Haiku + Sonnet | Shorter logs |
 | Budget | `weekend2-dev-monthly`, USD 12 incl. tax | USD 52 | Separate alerting |
 
-**Expected dev cost:** ≈ USD 10.8 ≈ ₹1,042/month incl. 18% GST, with the entry node on 24/7 and Aurora awake about 15 h a month. Most of that is the public IPv4 at USD 3.65; Lambda (always free), the T4g instance (trial), Scheduler, S3 and Budgets cost nothing or cents. Stop the node when you aren't testing to bring it to ≈ ₹660, or set `entry_node_enabled = false` for ≈ ₹545 and call the URL straight from your Mac. A new-account sign-up credit (USD 100–200) covers this. ⚠️ **Dev plus prod together (≈ ₹5,900) is over the ₹5,000 budget**, so destroy dev before prod goes live. The breakdown is in the tracker's **Dev env** sheet.
+**Expected dev cost (run only when needed):** ≈ USD 7.1 ≈ ₹682/month incl. 18% GST, assuming the stack stays deployed, the node runs about 60 h a month, and Aurora is awake about 15 h. KMS, the secrets and the node's disk are charged even when nothing is running. Destroying dev between work periods brings it close to ₹0. Running the node 24/7 costs ≈ ₹1,274. ⚠️ **Dev plus prod together is over the ₹5,000 budget at 24/7**, so destroy dev before prod goes live. The breakdown is in the tracker's **Dev env** sheet.
 
 **AWS Free plan accounts** (accounts created on or after 2025-07-15 that haven't been upgraded) can't use some paid Marketplace offers. The Claude models on Bedrock may be among them (Not verified). If model enablement (pre-flight step 3) fails, upgrade the plan: Billing console → Free Tier → Upgrade plan.
 
@@ -125,9 +126,9 @@ aws secretsmanager put-secret-value --secret-id weekend2-dev/tailscale/authkey \
 openssl rand -base64 48 | tr -d '\n' > sk.txt && aws secretsmanager put-secret-value \
   --secret-id weekend2-dev/app/session-signing-key --secret-string file://sk.txt && rm -P sk.txt
 
-# 4. Everything else
-terraform plan -out="$HOME/.tfplans/weekend2-dev.tfplan"   # review every line
-terraform apply "$HOME/.tfplans/weekend2-dev.tfplan"
+# 4. Everything else: plan (writes ~/.tfplans/weekend2-dev.tfplan + a masked report for the PR), review, apply
+cd ../../.. && python3 infra/scripts/plan_env.py --env dev   # add --local-state to preview before bootstrap
+cd infra/envs/dev && terraform apply "$HOME/.tfplans/weekend2-dev.tfplan"
 ```
 
 ### Dev smoke tests

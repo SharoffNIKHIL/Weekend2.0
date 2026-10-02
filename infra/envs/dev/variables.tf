@@ -63,9 +63,9 @@ variable "aurora_engine_version" {
 }
 
 variable "aurora_max_acu" {
-  description = "Aurora maximum ACU (dev: 1)."
+  description = "Aurora maximum ACU (same as prod)."
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "aurora_seconds_until_auto_pause" {
@@ -87,9 +87,9 @@ variable "bedrock_model_default" {
 }
 
 variable "bedrock_model_strong" {
-  description = "Strong Bedrock inference profile (India geo). Dev uses Haiku for both to keep cost low."
+  description = "Strong Bedrock inference profile (India geo, same as prod). Confirm exact ID before Phase 1."
   type        = string
-  default     = "in.anthropic.claude-haiku-4-5-20251001-v1:0"
+  default     = "in.anthropic.claude-sonnet-5"
 }
 
 variable "app_package_path" {
@@ -105,9 +105,9 @@ variable "entry_node_enabled" {
 }
 
 variable "entry_node_instance_type" {
-  description = "t4g.small is free for 750 h/month under the EC2 T4g free trial until 2026-12-31 (ap-south-1 included). Switch to t4g.nano before then."
+  description = "Entry node instance type: normal on-demand t4g.nano, same as prod. Dev runs only when needed, so stop the node between sessions."
   type        = string
-  default     = "t4g.small"
+  default     = "t4g.nano"
 }
 
 variable "tailnet_hostname" {

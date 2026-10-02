@@ -1,8 +1,8 @@
 # infra/envs/dev/main.tf
 # Weekend 2.0 — dev. Same modules as prod (D1 option "E2 (revised)", PROVISIONAL — depends on D1),
-# sized for free tier / near-zero cost and built to be destroyed:
-#   - entry node t4g.small (EC2 T4g free trial, 750 h/month, until 2026-12-31) and can be switched off
-#   - Aurora 0–1 ACU, 1-day backups, no deletion protection, no final snapshot
+# with normal (non-free-tier) resources sized like prod, run only when needed, and built to be destroyed:
+#   - entry node t4g.nano on demand (stop it between sessions); can be switched off entirely
+#   - Aurora 0–2 ACU, 1-day backups, no deletion protection, no final snapshot
 #   - KMS 7-day deletion window; secrets deleted at once; backup bucket force-destroyable, 1-day lock
 #   - no Google connector secret (Phase 3); 3-day log retention; USD 12 budget
 # Never put real personal data in dev.
