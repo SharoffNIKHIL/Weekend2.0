@@ -1,0 +1,25 @@
+# .gitignore
+.DS_Store
+.venv/
+venv/
+__pycache__/
+*.pyc
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+backend.hcl
+crash.log
+infra/modules/app/.build/
+# Office lock files
+~$*
+# Private project memory (kept local, not public)
+PROJECT_MEMORY.md
