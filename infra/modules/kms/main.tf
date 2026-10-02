@@ -46,7 +46,7 @@ resource "aws_kms_key" "data" {
   description             = "${var.name_prefix} data key (Aurora, secrets, logs, EBS, S3)"
   enable_key_rotation     = true
   rotation_period_in_days = 365
-  deletion_window_in_days = 30
+  deletion_window_in_days = var.deletion_window_in_days
   policy                  = data.aws_iam_policy_document.key.json
 
   tags = { Name = "${var.name_prefix}-data" }

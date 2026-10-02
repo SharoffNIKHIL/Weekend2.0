@@ -19,3 +19,9 @@ variable "object_lock_days" {
   type        = number
   default     = 35
 }
+
+variable "force_destroy" {
+  description = "Let terraform destroy delete every object, including governance-locked ones. Keep false in prod."
+  type        = bool
+  default     = false
+}

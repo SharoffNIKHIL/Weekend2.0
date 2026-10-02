@@ -23,6 +23,8 @@ tfplan
 *.tfplan
 *.plan
 infra/modules/app/.build/
+# Tailscale policy with your real login (template stays public)
+*.local.hujson
 # Office lock files
 ~$*
 # Private project memory (kept local, not public)

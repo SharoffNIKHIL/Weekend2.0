@@ -1,20 +1,23 @@
 // infra/tailscale/policy.hujson
 // Tailnet policy for Weekend 2.0 (P1 single-owner, P9 minimal surface).
-// Paste into Tailscale admin console > Access controls BEFORE the entry node first boots.
-// It REPLACES the default allow-all policy. Replace <OWNER_LOGIN> with your Tailscale
-// login (e.g. you@example.com); do not commit the real value.
+// TEMPLATE (public repo): keep <OWNER_LOGIN> here. For your real copy:
+//   cp infra/tailscale/policy.hujson infra/tailscale/policy.local.hujson   # git-ignored
+// replace <OWNER_LOGIN> in the copy (3 places) with your Tailscale login, then paste it into
+// Tailscale admin console > Access controls BEFORE an entry node first boots.
+// It REPLACES the default allow-all policy.
 {
-  // Only admins may create devices tagged tag:weekend (needed for --advertise-tags).
+  // Only admins may create devices with these tags (needed for --advertise-tags).
   "tagOwners": {
-    "tag:weekend": ["autogroup:admin"],
+    "tag:weekend":     ["autogroup:admin"], // prod entry node
+    "tag:weekend-dev": ["autogroup:admin"], // dev entry node
   },
 
-  // The owner's own devices may reach the entry node on HTTPS only. No other grants:
-  // tagged nodes cannot reach anything, and no other user can reach tag:weekend.
+  // The owner's own devices may reach the entry nodes on HTTPS only. No other grants:
+  // tagged nodes cannot reach anything, and no other user can reach them.
   "grants": [
     {
       "src": ["<OWNER_LOGIN>"],
-      "dst": ["tag:weekend"],
+      "dst": ["tag:weekend", "tag:weekend-dev"],
       "ip":  ["tcp:443"],
     },
   ],
@@ -23,8 +26,12 @@
   "tests": [
     {
       "src":    "<OWNER_LOGIN>",
-      "accept": ["tag:weekend:443"],
-      "deny":   ["tag:weekend:22"],
+      "accept": ["tag:weekend:443", "tag:weekend-dev:443"],
+      "deny":   ["tag:weekend:22", "tag:weekend-dev:22"],
+    },
+    {
+      "src":  "tag:weekend-dev",
+      "deny": ["tag:weekend:443"], // dev can never reach prod
     },
   ],
 }

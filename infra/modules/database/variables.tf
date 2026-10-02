@@ -63,3 +63,15 @@ variable "backup_retention_days" {
   type        = number
   default     = 7
 }
+
+variable "deletion_protection" {
+  description = "Block cluster deletion. Keep true in prod; dev sets false so it can be destroyed."
+  type        = bool
+  default     = true
+}
+
+variable "skip_final_snapshot" {
+  description = "Skip the final snapshot on destroy. Keep false in prod; dev sets true (no real data)."
+  type        = bool
+  default     = false
+}

@@ -39,9 +39,9 @@ resource "aws_rds_cluster" "this" {
   preferred_backup_window      = "21:00-21:30"         # UTC = 02:30–03:00 IST
   preferred_maintenance_window = "sun:21:30-sun:22:00" # UTC = Mon 03:00–03:30 IST
   copy_tags_to_snapshot        = true
-  deletion_protection          = true
-  skip_final_snapshot          = false
-  final_snapshot_identifier    = "${var.name_prefix}-aurora-final"
+  deletion_protection          = var.deletion_protection
+  skip_final_snapshot          = var.skip_final_snapshot
+  final_snapshot_identifier    = var.skip_final_snapshot ? null : "${var.name_prefix}-aurora-final"
 
   serverlessv2_scaling_configuration {
     min_capacity             = 0

@@ -8,6 +8,7 @@
 resource "aws_s3_bucket" "this" {
   bucket              = "${var.name_prefix}-backups-${var.account_id}"
   object_lock_enabled = true
+  force_destroy       = var.force_destroy # dev only: lets destroy empty a bucket that holds locked test objects
 }
 
 resource "aws_s3_bucket_versioning" "this" {

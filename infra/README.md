@@ -11,7 +11,8 @@ Your phone and Mac reach a **t4g.nano entry node** over the Tailscale tailnet. T
 ```
 infra/
 ├── bootstrap/            # remote-state bucket (local state, run once)
-├── envs/prod/            # the only environment: wires the modules together
+├── envs/dev/             # dev: same modules, free-tier sizing, destroyable (see "Dev environment")
+├── envs/prod/            # prod: wires the modules together
 └── modules/
     ├── network/          # VPC 10.20.0.0/16, public-a (entry node), private-a/b (Aurora), no NAT
     ├── kms/              # alias/weekend2-prod-data, yearly rotation
@@ -23,7 +24,8 @@ infra/
     ├── backup/           # weekend2-prod-backups-<account-id> (Object Lock, SSE-KMS)
     └── budget/           # weekend2-prod-monthly (USD 52 ≈ ₹5,000 incl. GST; alerts 50/80/100% + forecast)
 └── tailscale/
-    └── policy.hujson     # tailnet policy: only the owner reaches tag:weekend on 443
+    ├── policy.hujson     # template (public): only the owner reaches tag:weekend / tag:weekend-dev on 443
+    └── policy.local.hujson  # your copy with the real login (git-ignored)
 ```
 
 ## Versions (checked 2026-10-02)
@@ -58,7 +60,7 @@ terraform version   # expect 1.16.x
    aws bedrock create-foundation-model-agreement --model-id <MODEL_ID> --offer-token <TOKEN> --region ap-south-1
    aws bedrock get-foundation-model-availability --model-id <MODEL_ID> --region ap-south-1   # expect AVAILABLE
    ```
-4. **Apply the tailnet policy** [`tailscale/policy.hujson`](tailscale/policy.hujson) in the Tailscale admin console (replace `<OWNER_LOGIN>`). It replaces the default allow-all policy. Without it, any device on your tailnet can use the entry node, and through it the API (P1).
+4. **Apply the tailnet policy**: copy [`tailscale/policy.hujson`](tailscale/policy.hujson) to `tailscale/policy.local.hujson` (git-ignored), replace `<OWNER_LOGIN>` there, and paste it into the Tailscale admin console. It replaces the default allow-all policy. Without it, any device on your tailnet can use the entry node, and through it the API (P1).
 5. Copy `terraform.tfvars.example` → `terraform.tfvars` and `backend.hcl.example` → `backend.hcl`. Both copies are git-ignored and hold your account ID and e-mail.
 
 ## Run order
@@ -85,6 +87,67 @@ terraform plan -out="$HOME/.tfplans/weekend2-prod.tfplan"   # review every line
 terraform apply "$HOME/.tfplans/weekend2-prod.tfplan"       # needs a security checkpoint (IAM, network, cost)
 ```
 If the entry node still came up without the key, it retries for about 20 minutes and then logs an error to `/var/log/cloud-init-output.log`. Recover with `terraform apply -replace=module.entry_node.aws_instance.this`, because `user_data` runs only on first boot.
+
+
+## Dev environment (`envs/dev`)
+Same modules as prod, sized to cost almost nothing and to be torn down. **Never put real personal data in dev.**
+
+| Setting | Dev | Prod | Why |
+|---|---|---|---|
+| Name prefix / VPC | `weekend2-dev` / 10.30.0.0/16 | `weekend2-prod` / 10.20.0.0/16 | Both can exist side by side |
+| Entry node | `t4g.small`, tailnet `node-d1`, `tag:weekend-dev`; can be switched off | `t4g.nano`, `node-a1`, `tag:weekend` | EC2 T4g free trial: 750 h/month of t4g.small, ap-south-1 included, **until 2026-12-31** |
+| Aurora | 0–1 ACU, 1-day backups, no deletion protection, no final snapshot | 0–2 ACU, 7 days, protected | Destroyable |
+| KMS / secrets | 7-day key deletion window; secrets deleted at once; no Google connector secret | 30 days / 7 days / 3 secrets | Fast destroy and re-apply |
+| Backup bucket | 1-day default lock, `force_destroy` | 35 days, protected | Destroy can empty it |
+| Logs / Claude | 3 days, DEBUG / Haiku 4.5 for both slots | 14 days, INFO / Haiku + Sonnet | Cost |
+| Budget | `weekend2-dev-monthly`, USD 12 incl. tax | USD 52 | Separate alerting |
+
+**Expected dev cost:** ≈ USD 10.8 ≈ ₹1,042/month incl. 18% GST, with the entry node on 24/7 and Aurora awake about 15 h a month. Most of that is the public IPv4 at USD 3.65; Lambda (always free), the T4g instance (trial), Scheduler, S3 and Budgets cost nothing or cents. Stop the node when you aren't testing to bring it to ≈ ₹660, or set `entry_node_enabled = false` for ≈ ₹545 and call the URL straight from your Mac. A new-account sign-up credit (USD 100–200) covers this. ⚠️ **Dev plus prod together (≈ ₹5,900) is over the ₹5,000 budget**, so destroy dev before prod goes live. The breakdown is in the tracker's **Dev env** sheet.
+
+**AWS Free plan accounts** (accounts created on or after 2025-07-15 that haven't been upgraded) can't use some paid Marketplace offers. The Claude models on Bedrock may be among them (Not verified). If model enablement (pre-flight step 3) fails, upgrade the plan: Billing console → Free Tier → Upgrade plan.
+
+### Dev run order
+```bash
+mkdir -p ~/.tfplans && chmod 700 ~/.tfplans
+# 0. Pre-flight steps 1–5 above (Aurora version, model IDs, model enablement, tailnet policy, tfvars/backend for envs/dev)
+# 1. State bucket (skip if already created for prod)
+cd infra/bootstrap && terraform init && terraform plan -out="$HOME/.tfplans/weekend2-bootstrap.tfplan"
+terraform apply "$HOME/.tfplans/weekend2-bootstrap.tfplan"
+
+# 2. Key + secret containers first
+cd ../envs/dev
+terraform init -backend-config=backend.hcl
+terraform apply -target=module.kms -target=module.secrets
+
+# 3. Secret values: a ONE-OFF, pre-approved auth key tagged tag:weekend-dev (Tailscale admin → Settings → Keys)
+aws secretsmanager put-secret-value --secret-id weekend2-dev/tailscale/authkey \
+  --secret-string file://authkey.txt && rm -P authkey.txt
+openssl rand -base64 48 | tr -d '\n' > sk.txt && aws secretsmanager put-secret-value \
+  --secret-id weekend2-dev/app/session-signing-key --secret-string file://sk.txt && rm -P sk.txt
+
+# 4. Everything else
+terraform plan -out="$HOME/.tfplans/weekend2-dev.tfplan"   # review every line
+terraform apply "$HOME/.tfplans/weekend2-dev.tfplan"
+```
+
+### Dev smoke tests
+```bash
+terraform output                                            # URL, instance ID, bucket
+aws ssm start-session --target "$(terraform output -raw entry_node_instance_id)"
+#   on the node:  sudo tailscale status   # expect node-d1 online, tagged tag:weekend-dev
+pip install awscurl                                          # SigV4 curl, in a venv
+awscurl --service lambda --region ap-south-1 "$(terraform output -raw api_function_url)"
+#   expect {"status": "placeholder", "service": "weekend2-api"} (your admin identity is allowed)
+curl -s -o /dev/null -w '%{http_code}\n' "$(terraform output -raw api_function_url)"   # unsigned: expect 403
+```
+
+### Save money / tear down
+```bash
+aws ec2 stop-instances  --instance-ids "$(terraform output -raw entry_node_instance_id)"   # no IPv4 or instance charge while stopped
+aws ec2 start-instances --instance-ids "$(terraform output -raw entry_node_instance_id)"
+terraform plan -destroy -out="$HOME/.tfplans/weekend2-dev-destroy.tfplan" && terraform apply "$HOME/.tfplans/weekend2-dev-destroy.tfplan"
+```
+Destroy schedules the KMS key for deletion after 7 days. Until then you can undo it with `aws kms cancel-key-deletion --key-id <KEY_ID>`.
 
 ## Security notes
 - **No inbound rules anywhere.** Admin access is `aws ssm start-session --target <instance-id>`.
