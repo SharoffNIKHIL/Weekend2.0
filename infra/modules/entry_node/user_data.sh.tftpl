@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# infra/modules/entry_node/user_data.sh.tftpl
+# First-boot only: join the tailnet. Caddy (HTTPS on the tailnet name) and the
+# SigV4 signing proxy to the Lambda Function URL are configured by Ansible (Phase 2).
+set -euo pipefail
+
+hostnamectl set-hostname "${hostname}"
+
+# Tailscale from its official package repo (no curl | sh).
+dnf config-manager --add-repo https://pkgs.tailscale.com/stable/amazon-linux/2023/tailscale.repo
+dnf -y install tailscale
+systemctl enable --now tailscaled
+
+# Auth key lives only in Secrets Manager (P4); read it with the instance role, use it, drop it.
+AUTHKEY="$(aws secretsmanager get-secret-value --region "${region}" --secret-id "${tailscale_secret_id}" --query SecretString --output text)"
+tailscale up --authkey="$AUTHKEY" --hostname="${hostname}" --advertise-tags="${tailscale_tag}"
+unset AUTHKEY

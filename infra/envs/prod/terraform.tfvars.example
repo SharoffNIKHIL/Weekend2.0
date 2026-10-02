@@ -1,0 +1,4 @@
+# infra/envs/prod/terraform.tfvars.example — copy to terraform.tfvars (git-ignored)
+aws_account_id        = "<AWS_ACCOUNT_ID>"
+alert_email           = "<ALERT_EMAIL>"
+aurora_engine_version = "<AURORA_PG_VERSION>" # e.g. a 16.x/17.x version listed by describe-db-engine-versions for ap-south-1

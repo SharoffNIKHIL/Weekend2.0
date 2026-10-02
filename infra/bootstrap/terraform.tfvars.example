@@ -1,0 +1,3 @@
+# infra/bootstrap/terraform.tfvars.example — copy to terraform.tfvars (git-ignored)
+aws_account_id = "<AWS_ACCOUNT_ID>"
+owner          = "nikhil"
