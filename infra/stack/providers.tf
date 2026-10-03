@@ -1,4 +1,4 @@
-# infra/envs/prod/providers.tf
+# infra/stack/providers.tf
 provider "google" {
   project               = var.project_id
   region                = var.region

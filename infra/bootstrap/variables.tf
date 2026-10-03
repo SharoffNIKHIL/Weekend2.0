@@ -1,6 +1,6 @@
 # infra/bootstrap/variables.tf
 variable "project_id" {
-  description = "GCP project ID for this environment (e.g. weekend2-dev-xxxx). Set in terraform.tfvars (git-ignored)."
+  description = "GCP project ID for this environment. From ../credentials/<project>-<env>.secrets.tfvars (never committed)."
   type        = string
 
   validation {
@@ -14,8 +14,8 @@ variable "env" {
   type        = string
 
   validation {
-    condition     = contains(["dev", "prod"], var.env)
-    error_message = "env must be dev or prod."
+    condition     = can(regex("^[a-z][a-z0-9]{1,7}$", var.env))
+    error_message = "env must be 2-8 lowercase letters/digits, starting with a letter."
   }
 }
 
@@ -60,4 +60,10 @@ variable "state_location" {
   description = "State bucket location override. us-central1/us-east1/us-west1 get 5 GB Standard storage free. null = var.region."
   type        = string
   default     = null
+}
+
+variable "owner_principal" {
+  description = "IAM principal allowed to impersonate the deployer (user:<e-mail>). Identifying: put it in the secrets file."
+  type        = string
+  sensitive   = true
 }

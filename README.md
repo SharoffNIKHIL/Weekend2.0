@@ -40,8 +40,8 @@ flowchart LR
 weekend2.0/
 ├── README.md            # this file
 ├── tracking/           # Weekend2.0_Tracker.xlsx — phases, tasks, decisions, issues, cost
-├── infra/              # Terraform (GCP): bootstrap, modules/, envs/dev, envs/prod
-├── .github/workflows/  # branch-guard + terraform-plan (keyless, Workload Identity Federation)
+├── infra/              # Terraform (GCP): bootstrap, modules/, stack/ (one root for all envs), values/ (per env branch)
+├── .github/workflows/  # branch-guard, infra-ci/cd, app-ci/cd (keyless, Workload Identity Federation)
 └── docs/
     ├── README.md        # how the docs are organised and updated
     ├── DESIGN.md        # main design document (architecture, components, cost, roadmap)

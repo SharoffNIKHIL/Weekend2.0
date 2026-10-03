@@ -1,6 +1,8 @@
-# .github/workflows/branch-guard.yml
-# Enforces docs/BRANCHING.md: no env values in code; feature_*/Feature_* -> dev; prod/release idle; fmt/validate clean.
-# No cloud credentials are used: validate runs with -backend=false.
+# .github/workflows/branch-guard.yml — enforces docs/BRANCHING.md v1.4 (no cloud credentials used)
+#   - feature_*/Feature_* → dev only; release and prod accept PRs only from main or promote/* branches
+#   - env values: infra/values/<env>*.tfvars may exist ONLY on the matching env branch
+#     (dev → dev*.tfvars, prod → prod*.tfvars); main and release hold templates (*.example) only
+#   - identifying values (secrets.auto.tfvars, terraform.tfvars, backend.hcl) are never committed
 name: branch-guard
 
 on:
@@ -11,62 +13,38 @@ permissions:
   contents: read
 
 jobs:
-  values-guard:
+  guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
 
-      - name: Branch rules (feature_* -> dev only; prod and release are idle)
+      - name: Branch rules
         env:
           BASE: ${{ github.base_ref }}
           HEAD: ${{ github.head_ref }}
         run: |
           set -euo pipefail
           echo "PR: ${HEAD} -> ${BASE}"
-          case "$BASE" in
-            prod|release)
-              echo "::error::${BASE} is created but idle; no PRs into it yet (docs/BRANCHING.md)."
-              exit 1 ;;
-          esac
           shopt -s nocasematch   # feature_infra, Feature_code, …
           if [[ "$HEAD" == feature_* && "$BASE" != "dev" ]]; then
-            echo "::error::Feature branches merge into dev only."
-            exit 1
+            echo "::error::Feature branches merge into dev only."; exit 1
+          fi
+          if [[ "$BASE" == release || "$BASE" == prod ]] && [[ "$HEAD" != main && "$HEAD" != promote/* ]]; then
+            echo "::error::${BASE} only accepts PRs from main or promote/* (infra/scripts/promote.py)."; exit 1
           fi
 
-      - name: No env values in code
+      - name: Env values only on their own branch
         env:
           BASE: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          bad=$(git diff --name-only --diff-filter=AM "origin/${BASE}...HEAD" | grep -E '\.tfvars$' || true)
-          tracked=$(git ls-files | grep -E '\.tfvars$' || true)
-          if [ -n "$bad$tracked" ]; then
-            echo "::error::Env values live in GitHub environment secrets, not in code: ${bad} ${tracked}"
-            exit 1
+          values=$(git ls-files 'infra/values/*.tfvars' | grep -v '\.example$' || true)
+          case "$BASE" in
+            dev|prod) bad=$(printf '%s\n' "$values" | grep -v -E "^infra/values/${BASE}(\.bootstrap)?\.tfvars$" | grep . || true) ;;
+            *)        bad=$values ;;
+          esac
+          leaked=$(git ls-files | grep -E '(^|/)(secrets\.auto\.tfvars|terraform\.tfvars|backend\.hcl)$|\.tfplan$|credentials/' || true)
+          if [ -n "$bad$leaked" ]; then
+            echo "::error::Not allowed on ${BASE}: ${bad} ${leaked} (docs/BRANCHING.md)"; exit 1
           fi
-          echo "No tfvars committed."
-
-  terraform:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        root: [infra/bootstrap, infra/envs/dev, infra/envs/prod]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        with:
-          terraform_version: 1.16.5
-
-      - name: fmt
-        run: terraform fmt -check -recursive infra
-
-      - name: validate
-        working-directory: ${{ matrix.root }}
-        run: |
-          terraform init -backend=false -input=false -lockfile=readonly
-          terraform validate -no-color
+          echo "Values OK for ${BASE}: ${values:-templates only}"
