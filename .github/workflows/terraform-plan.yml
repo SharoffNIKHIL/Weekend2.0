@@ -1,0 +1,87 @@
+# .github/workflows/terraform-plan.yml
+# Plans infra/envs/dev (GCP) for PRs into `dev` (feature_* → dev) and posts the masked plan as a PR comment.
+# Dev values come ONLY from the `dev` environment's secrets, never from the code:
+#   TFVARS                    non-sensitive dev values (HCL, keys as in infra/envs/dev/terraform.tfvars.example)
+#   GCP_PROJECT_ID            dev project ID
+#   GCP_BILLING_ACCOUNT_ID    billing account for the budget
+#   ALERT_EMAIL               budget alert e-mail
+#   GCP_WIF_PROVIDER          Workload Identity provider (infra/bootstrap output wif_provider)
+#   GCP_PLAN_SERVICE_ACCOUNT  read-only plan service account (infra/bootstrap output plan_service_account)
+# Keyless: GitHub OIDC → Workload Identity Federation. Never applies. Fork PRs get no secrets/token, so they skip.
+name: terraform-plan
+
+on:
+  pull_request:
+    branches: [dev]
+    paths: ["infra/**", ".github/workflows/terraform-plan.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC → GCP Workload Identity Federation; no JSON keys
+  pull-requests: write # post the plan comment
+
+concurrency:
+  group: terraform-plan-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      HAS_WIF: ${{ secrets.GCP_WIF_PROVIDER != '' }}
+    steps:
+      - name: Skip when GCP access is not configured yet
+        if: env.HAS_WIF != 'true'
+        run: echo "::notice::dev environment secret GCP_WIF_PROVIDER is not set; skipping plan (see docs/BRANCHING.md)."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HAS_WIF == 'true'
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        if: env.HAS_WIF == 'true'
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.HAS_WIF == 'true'
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_PLAN_SERVICE_ACCOUNT }}
+
+      - name: Write terraform.tfvars from secrets (runner only, never committed)
+        if: env.HAS_WIF == 'true'
+        env:
+          TFVARS: ${{ secrets.TFVARS }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_BILLING_ACCOUNT_ID: ${{ secrets.GCP_BILLING_ACCOUNT_ID }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          {
+            printf '%s\n' "$TFVARS"
+            printf 'project_id         = "%s"\n' "$GCP_PROJECT_ID"
+            printf 'billing_account_id = "%s"\n' "$GCP_BILLING_ACCOUNT_ID"
+            printf 'alert_email        = "%s"\n' "$ALERT_EMAIL"
+          } > infra/envs/dev/terraform.tfvars
+
+      - name: terraform plan (local throwaway state until bootstrap state is wired in)
+        if: env.HAS_WIF == 'true'
+        run: python3 infra/scripts/plan_env.py --env dev --local-state --out plan.md
+
+      - name: Post plan to the PR
+        if: env.HAS_WIF == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          head -c 60000 plan.md > comment.md   # GitHub comment limit is 65,536 characters
+          gh pr comment "$PR" --body-file comment.md
+
+      - name: Remove tfvars and credentials
+        if: always()
+        run: rm -f infra/envs/dev/terraform.tfvars gha-creds-*.json

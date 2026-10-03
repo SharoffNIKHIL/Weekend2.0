@@ -1,10 +1,5 @@
 # infra/modules/scheduler/outputs.tf
-output "group_name" {
-  description = "Schedule group name."
-  value       = aws_scheduler_schedule_group.this.name
-}
-
-output "role_arn" {
-  description = "Scheduler execution role ARN (passed when creating reminder schedules)."
-  value       = aws_iam_role.scheduler.arn
+output "job_names" {
+  description = "Scheduler job names."
+  value       = [for j in google_cloud_scheduler_job.daily : j.name]
 }

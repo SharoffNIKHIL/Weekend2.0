@@ -1,8 +1,12 @@
 # infra/envs/prod/main.tf
-# Weekend 2.0 — production (single owner). Design: DESIGN.md §16–17, D1 option "E2 (revised)":
-# serverless-first + one tiny entry node on the tailnet. PROVISIONAL — depends on D1.
+# Weekend 2.0 — prod on GCP (D4 = GCP, 2026-10-03). PROVISIONAL — depends on D1/D2.
+# Created but idle: nothing is planned or applied for prod yet (docs/BRANCHING.md).
+# Everything in asia-south1 (Mumbai) except Claude on Vertex AI ("global", P7 exit).
 
-data "aws_caller_identity" "current" {}
+data "google_kms_crypto_key" "data" {
+  name     = "data"
+  key_ring = "projects/${var.project_id}/locations/${var.region}/keyRings/${local.name_prefix}"
+}
 
 locals {
   name_prefix = "${var.project_name}-${var.env}" # weekend2-prod
@@ -11,26 +15,20 @@ locals {
 module "network" {
   source = "../../modules/network"
 
-  name_prefix          = local.name_prefix
-  vpc_cidr             = var.vpc_cidr
-  azs                  = var.azs
-  public_subnet_cidr   = var.public_subnet_cidr
-  private_subnet_cidrs = var.private_subnet_cidrs
-}
-
-module "kms" {
-  source = "../../modules/kms"
-
   name_prefix = local.name_prefix
+  region      = var.node_region
+  subnet_cidr = var.subnet_cidr
+  enable_nat  = true
 }
 
 module "secrets" {
   source = "../../modules/secrets"
 
   name_prefix = local.name_prefix
-  kms_key_arn = module.kms.key_arn
+  region      = var.region
+  kms_key_id  = data.google_kms_crypto_key.data.id
   secrets = {
-    "tailscale/authkey"              = "Tailscale auth key for the entry node (reusable=false, tagged, pre-approved)"
+    "tailscale/authkey"              = "Tailscale auth key for the entry node (one-off, tagged tag:weekend, pre-approved)"
     "app/session-signing-key"        = "HMAC key for passkey session cookies"
     "connectors/google-oauth-client" = "Google OAuth client for Calendar/Gmail connectors (Phase 3)"
   }
@@ -39,66 +37,75 @@ module "secrets" {
 module "database" {
   source = "../../modules/database"
 
-  name_prefix              = local.name_prefix
-  vpc_id                   = module.network.vpc_id
-  subnet_ids               = module.network.private_subnet_ids
-  kms_key_arn              = module.kms.key_arn
-  engine_version           = var.aurora_engine_version
-  max_acu                  = var.aurora_max_acu
-  seconds_until_auto_pause = var.aurora_seconds_until_auto_pause
+  location              = var.region
+  kms_key_id            = data.google_kms_crypto_key.data.id
+  delete_protection     = true
+  pitr                  = false
+  backup_retention_days = 7
 }
 
 module "backup" {
   source = "../../modules/backup"
 
-  name_prefix = local.name_prefix
-  account_id  = data.aws_caller_identity.current.account_id
-  kms_key_arn = module.kms.key_arn
-}
-
-module "scheduler" {
-  source = "../../modules/scheduler"
-
-  name_prefix         = local.name_prefix
-  worker_function_arn = module.app.worker_function_arn
+  project_id       = var.project_id
+  region           = var.region
+  kms_key_id       = data.google_kms_crypto_key.data.id
+  retention_days   = 35
+  soft_delete_days = 7
+  force_destroy    = false
 }
 
 module "app" {
   source = "../../modules/app"
 
-  name_prefix         = local.name_prefix
-  kms_key_arn         = module.kms.key_arn
-  db_cluster_arn      = module.database.cluster_arn
-  db_secret_arn       = module.database.master_secret_arn
-  db_name             = module.database.database_name
-  app_secret_arns     = [module.secrets.arns["app/session-signing-key"], module.secrets.arns["connectors/google-oauth-client"]]
-  backup_bucket_name  = module.backup.bucket_name
-  backup_bucket_arn   = module.backup.bucket_arn
-  schedule_group_name = module.scheduler.group_name
-  scheduler_role_arn  = module.scheduler.role_arn
-  python_runtime      = var.lambda_python_runtime
-  model_default       = var.bedrock_model_default
-  model_strong        = var.bedrock_model_strong
-  package_path        = var.app_package_path
+  name_prefix        = local.name_prefix
+  region             = var.region
+  image              = var.app_image
+  firestore_database = module.database.database_name
+  backup_bucket_name = module.backup.bucket_name
+  api_secrets = {
+    session_signing_key = module.secrets.ids["app/session-signing-key"]
+    google_oauth_client = module.secrets.ids["connectors/google-oauth-client"]
+  }
+  vertex_location     = var.vertex_location
+  model_default       = var.model_default
+  model_strong        = var.model_strong
+  deletion_protection = true
+}
+
+module "scheduler" {
+  source = "../../modules/scheduler"
+
+  name_prefix             = local.name_prefix
+  region                  = var.region
+  worker_url              = module.app.worker_url
+  invoker_service_account = module.app.invoker_service_account
 }
 
 module "entry_node" {
   source = "../../modules/entry_node"
 
-  name_prefix          = local.name_prefix
-  region               = var.region
-  vpc_id               = module.network.vpc_id
-  subnet_id            = module.network.public_subnet_id
-  kms_key_arn          = module.kms.key_arn
-  tailscale_secret_arn = module.secrets.arns["tailscale/authkey"]
-  api_function_arn     = module.app.api_function_arn
-  tailnet_hostname     = var.tailnet_hostname
+  name_prefix         = local.name_prefix
+  project_id          = var.project_id
+  zone                = var.node_zone
+  subnet_id           = module.network.subnet_id
+  node_tag            = module.network.node_tag
+  machine_type        = "e2-micro"
+  disk_type           = "pd-balanced"
+  disk_kms_key_id     = data.google_kms_crypto_key.data.id
+  tailscale_secret_id = module.secrets.ids["tailscale/authkey"]
+  api_service_name    = module.app.api_service_name
+  api_region          = var.region
+  tailnet_hostname    = var.tailnet_hostname
+  tailscale_tag       = var.tailscale_tag
+  deletion_protection = true
 }
 
 module "budget" {
   source = "../../modules/budget"
 
-  name_prefix = local.name_prefix
-  limit_usd   = var.budget_limit_usd
-  alert_email = var.alert_email
+  name_prefix        = local.name_prefix
+  billing_account_id = var.billing_account_id
+  alert_email        = var.alert_email
+  amount             = var.budget_amount_inr
 }

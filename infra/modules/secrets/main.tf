@@ -1,14 +1,30 @@
 # infra/modules/secrets/main.tf
-# Secret CONTAINERS only (P4). Values are never written by Terraform, so they never
-# reach state or git. Set them out-of-band, e.g.:
-#   aws secretsmanager put-secret-value --secret-id weekend2-prod/tailscale/authkey \
-#     --secret-string file://authkey.txt   # then shred the file
+# Secret CONTAINERS only (P4), encrypted with the project CMEK and kept in one region.
+# Values are never written by Terraform, so they never reach state or git. Set them out-of-band:
+#   gcloud secrets versions add weekend2-dev-tailscale-authkey --data-file=authkey.txt && rm -P authkey.txt
 
-resource "aws_secretsmanager_secret" "this" {
+resource "google_secret_manager_secret" "this" {
   for_each = var.secrets
 
-  name                    = "${var.name_prefix}/${each.key}"
-  description             = each.value
-  kms_key_id              = var.kms_key_arn
-  recovery_window_in_days = var.recovery_window_in_days
+  secret_id = "${var.name_prefix}-${replace(each.key, "/", "-")}"
+  labels    = { purpose = replace(each.key, "/", "-") }
+
+  annotations = {
+    description = each.value
+  }
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+
+        dynamic "customer_managed_encryption" {
+          for_each = var.kms_key_id == null ? [] : [var.kms_key_id]
+          content {
+            kms_key_name = customer_managed_encryption.value
+          }
+        }
+      }
+    }
+  }
 }

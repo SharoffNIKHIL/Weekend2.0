@@ -1,15 +1,15 @@
 # infra/modules/network/outputs.tf
-output "vpc_id" {
+output "network_id" {
   description = "VPC ID."
-  value       = aws_vpc.this.id
+  value       = google_compute_network.this.id
 }
 
-output "public_subnet_id" {
-  description = "Public subnet ID for the entry node."
-  value       = aws_subnet.public_a.id
+output "subnet_id" {
+  description = "Entry-node subnet ID."
+  value       = google_compute_subnetwork.node.id
 }
 
-output "private_subnet_ids" {
-  description = "Private subnet IDs for Aurora."
-  value       = [for s in aws_subnet.private : s.id]
+output "node_tag" {
+  description = "Network tag for the entry node."
+  value       = var.node_tag
 }

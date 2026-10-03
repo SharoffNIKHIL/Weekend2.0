@@ -1,10 +1,10 @@
 # infra/modules/entry_node/outputs.tf
-output "instance_id" {
-  description = "Entry node instance ID (use with: aws ssm start-session --target <id>)."
-  value       = aws_instance.this.id
+output "instance_name" {
+  description = "Instance name (gcloud compute ssh <name> --zone <zone> --tunnel-through-iap)."
+  value       = google_compute_instance.this.name
 }
 
-output "role_arn" {
-  description = "Entry node IAM role ARN."
-  value       = aws_iam_role.entry.arn
+output "service_account" {
+  description = "Entry node service account."
+  value       = google_service_account.entry.email
 }

@@ -1,39 +1,28 @@
-%% Weekend 2.0 - System Architecture (provisional). FigJam: https://www.figma.com/board/pMvZioGximavxDcsD14Ee9
-flowchart LR
-  subgraph client ["Owner Devices"]
-    phonePwa["iPhone PWA"]
-    macBrowser["Mac Browser"]
+%% Weekend 2.0 - System architecture on Google Cloud (DESIGN.md section 5.2, v0.2.0, 2026-10-03)
+flowchart TB
+  subgraph Devices["Owner devices"]
+    pwa["PWA app - chat UI, mic, push"]
   end
-  subgraph gateway ["Private Entry - no public ports"]
-    privateEntry["Tailnet + Caddy HTTPS"]
+  subgraph GCP["Google Cloud project - asia-south1"]
+    subgraph VPC["VPC - no external IPs, Cloud NAT egress"]
+      node["Entry node e2-micro - tailscaled + HTTPS proxy, adds ID token"]
+    end
+    api["Cloud Run api - internal ingress, IAM invoke"]
+    worker["Cloud Run worker - retention, export, reminders"]
+    fs[("Firestore Native - CMEK, vector search")]
+    sm[("Secret Manager - CMEK")]
+    gcs[("GCS backups - retention policy, CMEK")]
+    sched["Cloud Scheduler + Cloud Tasks"]
   end
-  subgraph service ["Weekend Server - EC2 t4g ap-south-1"]
-    apiServer["FastAPI API - auth, chat, memory"]
-    agentCore["Agent Core - LLM loop, tools"]
-    voiceWorker["Voice Worker - STT, TTS"]
-    scheduler["Scheduler - reminders, retention, backups"]
-  end
-  subgraph datastore ["Data - KMS encrypted"]
-    postgres["PostgreSQL + pgvector"]
-    s3Backups["S3 Backups - Object Lock"]
-    secrets["AWS Secrets Manager"]
-  end
-  subgraph external ["Outside Services - data exits"]
-    bedrock["Amazon Bedrock Claude - India profile"]
-    google["Google Calendar and Gmail"]
-    push["Apple and Google Push"]
-  end
-  phonePwa -->|"HTTPS over WireGuard"| privateEntry
-  macBrowser -->|"HTTPS over WireGuard"| privateEntry
-  privateEntry -->|"Routes /api"| apiServer
-  apiServer -->|"Runs turn"| agentCore
-  apiServer <-->|"Audio in, text and speech out"| voiceWorker
-  apiServer -->|"Schedules reminders"| scheduler
-  apiServer -->|"Sessions, passkeys"| postgres
-  agentCore -->|"History, memories"| postgres
-  agentCore -->|"Connector tokens"| secrets
-  agentCore -.->|"Bedrock: Inference"| bedrock
-  agentCore -.->|"Google: Read-only"| google
-  scheduler -->|"Reminders, cleanup"| postgres
-  scheduler -->|"Nightly dumps"| s3Backups
-  scheduler -.->|"Push: Notify"| push
+  llm["Claude on Vertex AI - global endpoint"]
+  conn["Connectors - Gmail, Calendar, Notion"]
+  pwa -->|"WireGuard tailnet + passkey"| node
+  node -->|"ID token"| api
+  api --> fs
+  api -->|"secrets"| sm
+  api -->|"enqueue reminder"| sched
+  sched -->|"OIDC"| worker
+  worker --> fs
+  worker --> gcs
+  api -->|"data exit X1"| llm
+  api -->|"read-only OAuth"| conn

@@ -1,22 +1,34 @@
 # infra/modules/budget/variables.tf
 variable "name_prefix" {
-  description = "Prefix for resource names, e.g. weekend2-prod."
+  description = "Prefix for resource names, e.g. weekend2-dev."
   type        = string
 }
 
-variable "limit_usd" {
-  description = "Monthly budget in USD (₹5,000 ≈ USD 52 at ₹96.12 on 2026-10-02)."
-  type        = number
-}
-
-variable "alert_email" {
-  description = "E-mail address for budget alerts (set in terraform.tfvars, git-ignored)."
+variable "billing_account_id" {
+  description = "Billing account ID (XXXXXX-XXXXXX-XXXXXX). Set in terraform.tfvars / GitHub secret."
   type        = string
   sensitive   = true
 }
 
-variable "actual_thresholds_percent" {
-  description = "Alert thresholds on actual spend, in percent."
+variable "alert_email" {
+  description = "E-mail for budget alerts. Set in terraform.tfvars / GitHub secret."
+  type        = string
+  sensitive   = true
+}
+
+variable "currency" {
+  description = "Must match the billing account currency (INR for Indian accounts)."
+  type        = string
+  default     = "INR"
+}
+
+variable "amount" {
+  description = "Monthly budget amount in var.currency, before tax."
+  type        = number
+}
+
+variable "actual_thresholds" {
+  description = "Alert thresholds on actual spend (fractions)."
   type        = list(number)
-  default     = [50, 80, 100]
+  default     = [0.5, 0.8, 1.0]
 }

@@ -51,7 +51,7 @@ Then update DESIGN.md §6 and PROJECT_MEMORY.md M3/M4. Never delete an ADR; mark
 
 ## Rules for all documents
 
-- **No secrets, account IDs, real IPs or personal data of others.** Use placeholders such as `<AWS_ACCOUNT_ID>` and `<HOME_IP>/32`.
+- **No secrets, account IDs, real IPs or personal data of others.** Use placeholders such as `<GCP_PROJECT_ID>`, `<BILLING_ACCOUNT_ID>` and `<HOME_IP>/32`.
 - **Dated facts:** every price, version or limit carries a "checked on" date and a source link. Mark anything unconfirmed as `Not verified`.
 - **Costs** are given in INR and USD, with the exchange rate and its date.
 - **Append-only history:** don't rewrite old release notes or decisions; add new entries.

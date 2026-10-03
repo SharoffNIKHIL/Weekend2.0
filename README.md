@@ -22,16 +22,17 @@ A private, single-owner AI assistant. Chat or talk to it from your phone or Mac;
 
 ```mermaid
 flowchart LR
-  you([You: phone / Mac]) -- private tailnet + passkey --> server[Private server<br/>AWS Mumbai]
-  server --> db[(PostgreSQL + pgvector<br/>encrypted)]
-  server -- India-only inference --> llm[Claude on Amazon Bedrock]
-  server -- read-only --> conn[Calendar / Gmail]
+  you([You: phone / Mac]) -- private tailnet + passkey --> node[Entry node e2-micro<br/>GCP, no public IP]
+  node -- ID token, internal ingress --> api[Cloud Run API<br/>asia-south1]
+  api --> db[(Firestore<br/>CMEK, Mumbai)]
+  api -- "🔓 global endpoint" --> llm[Claude on Vertex AI]
+  api -- read-only --> conn[Calendar / Gmail]
 ```
 
-- **No public endpoint:** the server has no inbound ports and is reachable only over your tailnet.
+- **Cloud: Google Cloud** (decided 2026-10-03; AWS dropped). **No public endpoint:** the API accepts only internal, IAM-signed calls, and the entry node has no public IP. It is reachable only over your tailnet.
 - **Privacy rules P1–P10:** see [DESIGN.md §4](docs/DESIGN.md#4-privacy-rules-in-plain-words-p1p10).
-- **Budget:** ≤ ₹5,000 a month (about USD 52). The current estimate for text-only is about ₹4,440 ([DESIGN.md §21](docs/DESIGN.md#21-cost-model)).
-- All six major decisions (hosting, model, cloud, storage, auth, mobile) are **still open**: [DESIGN.md §6](docs/DESIGN.md#6-decisions-register-d1d6).
+- **Budget:** ≤ ₹5,000 a month (about USD 52). The current GCP estimate for text-only prod is about ₹2,784 incl. 18% GST, plus ≈ ₹243 for dev ([infra/README.md](infra/README.md#cost-expected-use-asia-south1-fx-9612-on-2026-10-02)).
+- Decisions: **D4 cloud = GCP (decided)**. Hosting, model, storage, auth and mobile are still open: [DESIGN.md §6](docs/DESIGN.md#6-decisions-register-d1d6).
 
 ## Repository layout
 
@@ -39,6 +40,8 @@ flowchart LR
 weekend2.0/
 ├── README.md            # this file
 ├── tracking/           # Weekend2.0_Tracker.xlsx — phases, tasks, decisions, issues, cost
+├── infra/              # Terraform (GCP): bootstrap, modules/, envs/dev, envs/prod
+├── .github/workflows/  # branch-guard + terraform-plan (keyless, Workload Identity Federation)
 └── docs/
     ├── README.md        # how the docs are organised and updated
     ├── DESIGN.md        # main design document (architecture, components, cost, roadmap)
@@ -46,17 +49,17 @@ weekend2.0/
     └── diagrams/        # exported diagrams (Mermaid lives inline in DESIGN.md)
 ```
 
-Planned, added in Phase 1 and later: `src/weekend/` (Python app), `tests/`, `infra/` (Terraform `modules/` + `envs/`), `ansible/`, `.github/workflows/`.
+Planned, added in Phase 1 and later: `src/weekend/` (Python app), `tests/`, `ansible/`. Branching: [docs/BRANCHING.md](docs/BRANCHING.md).
 
 ## Prerequisites (planned for Phase 1)
 
 | Tool | Version | Why |
 |---|---|---|
 | Python | 3.12+ | Application |
-| Docker | current | Local Postgres + pgvector |
-| Terraform | pinned in Phase 5 | Infrastructure |
+| Docker | current | Container image for Cloud Run; Firestore emulator for tests |
+| Terraform | 1.16.x (Google provider 8.5) | Infrastructure |
 | Ansible | pinned in Phase 5 | Server configuration |
-| AWS CLI v2 | current | Deployment (your own credentials; never committed) |
+| Google Cloud SDK (`gcloud`) | current | Deployment (browser login; never commit or paste keys) |
 | Tailscale | current | Private access |
 
 ## Getting started
@@ -71,7 +74,7 @@ From Phase 1 onwards, this section will hold:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # placeholders only; real secrets live in AWS Secrets Manager
+cp .env.example .env        # placeholders only; real secrets live in Google Secret Manager
 pytest
 ```
 
@@ -83,7 +86,7 @@ To be defined in Phase 1. Rules decided now:
 
 ## Testing and CI/CD
 
-Planned: `ruff` → `mypy` → `pytest` → Docker build → Trivy, gitleaks, pip-audit, checkov → gated deploy, using GitHub Actions with AWS OIDC (no stored keys). See [DESIGN.md §18](docs/DESIGN.md#18-cicd).
+Planned: `ruff` → `mypy` → `pytest` → Docker build → Trivy, gitleaks, pip-audit, checkov → gated deploy, using GitHub Actions with Workload Identity Federation (no stored keys). See [DESIGN.md §18](docs/DESIGN.md#18-cicd).
 
 ## Troubleshooting
 

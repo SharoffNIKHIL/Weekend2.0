@@ -1,62 +1,31 @@
 # infra/modules/database/main.tf
-# Aurora PostgreSQL Serverless v2 that pauses at 0 ACU when idle (pay only for storage).
-# First request after a pause takes ~15 s (30 s+ after 24 h idle) — the app must retry.
-# Access is ONLY via the RDS Data API (HTTPS + IAM); the security group has no ingress.
+# Firestore (Native mode), the (default) database so the free daily quota applies.
+# Serverless: no instance to pause, no idle charge. CMEK-encrypted (P3); vector search
+# indexes for memory retrieval are added in Phase 1. CMEK is optional (KMS has a small monthly cost). Daily backups with fixed retention (P10).
 
-resource "aws_db_subnet_group" "this" {
-  name        = "${var.name_prefix}-aurora-subnets"
-  description = "Private subnets for ${var.name_prefix} Aurora"
-  subnet_ids  = var.subnet_ids
-}
+resource "google_firestore_database" "this" {
+  name                              = "(default)"
+  location_id                       = var.location
+  type                              = "FIRESTORE_NATIVE"
+  concurrency_mode                  = "OPTIMISTIC"
+  app_engine_integration_mode       = "DISABLED"
+  point_in_time_recovery_enablement = var.pitr ? "POINT_IN_TIME_RECOVERY_ENABLED" : "POINT_IN_TIME_RECOVERY_DISABLED"
+  delete_protection_state           = var.delete_protection ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
+  deletion_policy                   = var.delete_protection ? "ABANDON" : "DELETE"
 
-resource "aws_security_group" "aurora" {
-  name        = "${var.name_prefix}-aurora-sg"
-  description = "Aurora: no inbound rules; access only through the RDS Data API"
-  vpc_id      = var.vpc_id
-
-  tags = { Name = "${var.name_prefix}-aurora-sg" }
-}
-
-resource "aws_rds_cluster" "this" {
-  cluster_identifier = "${var.name_prefix}-aurora"
-  engine             = "aurora-postgresql"
-  engine_mode        = "provisioned" # required for Serverless v2
-  engine_version     = var.engine_version
-  database_name      = var.database_name
-  master_username    = var.master_username
-
-  # RDS creates and rotates the master password in Secrets Manager — never in state.
-  manage_master_user_password   = true
-  master_user_secret_kms_key_id = var.kms_key_arn
-
-  storage_encrypted      = true
-  kms_key_id             = var.kms_key_arn
-  db_subnet_group_name   = aws_db_subnet_group.this.name
-  vpc_security_group_ids = [aws_security_group.aurora.id]
-  enable_http_endpoint   = true # RDS Data API
-
-  backup_retention_period      = var.backup_retention_days
-  preferred_backup_window      = "21:00-21:30"         # UTC = 02:30–03:00 IST
-  preferred_maintenance_window = "sun:21:30-sun:22:00" # UTC = Mon 03:00–03:30 IST
-  copy_tags_to_snapshot        = true
-  deletion_protection          = var.deletion_protection
-  skip_final_snapshot          = var.skip_final_snapshot
-  final_snapshot_identifier    = var.skip_final_snapshot ? null : "${var.name_prefix}-aurora-final"
-
-  serverlessv2_scaling_configuration {
-    min_capacity             = 0
-    max_capacity             = var.max_acu
-    seconds_until_auto_pause = var.seconds_until_auto_pause
+  dynamic "cmek_config" {
+    for_each = var.kms_key_id == null ? [] : [var.kms_key_id]
+    content {
+      kms_key_name = cmek_config.value
+    }
   }
 }
 
-resource "aws_rds_cluster_instance" "writer" {
-  identifier                   = "${var.name_prefix}-aurora-1"
-  cluster_identifier           = aws_rds_cluster.this.id
-  instance_class               = "db.serverless"
-  engine                       = aws_rds_cluster.this.engine
-  engine_version               = aws_rds_cluster.this.engine_version
-  publicly_accessible          = false
-  auto_minor_version_upgrade   = true
-  performance_insights_enabled = false
+resource "google_firestore_backup_schedule" "daily" {
+  count = var.backup_retention_days > 0 ? 1 : 0
+
+  database  = google_firestore_database.this.name
+  retention = "${var.backup_retention_days * 86400}s"
+
+  daily_recurrence {}
 }
