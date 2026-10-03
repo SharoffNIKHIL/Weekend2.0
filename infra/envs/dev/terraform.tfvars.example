@@ -1,10 +1,5 @@
 # infra/envs/dev/terraform.tfvars.example — copy to terraform.tfvars (git-ignored)
-aws_account_id        = "<AWS_ACCOUNT_ID>"
-alert_email           = "<ALERT_EMAIL>"
-aurora_engine_version = "<AURORA_PG_VERSION>" # a 16.3+/17.x version from describe-db-engine-versions in ap-south-1
-
-# Optional overrides (defaults shown)
-# entry_node_enabled       = true        # false = no EC2/public IPv4; test the URL from your Mac with SigV4
-# entry_node_instance_type = "t4g.small" # free (T4g trial) until 2026-12-31; then "t4g.nano"
-# aurora_max_acu           = 1
-# budget_limit_usd         = 12
+# SENSITIVE values only. Non-sensitive dev values live in values.auto.tfvars on the `dev` branch
+# (docs/BRANCHING.md). Terraform loads both files automatically.
+aws_account_id = "<AWS_ACCOUNT_ID>"
+alert_email    = "<ALERT_EMAIL>"

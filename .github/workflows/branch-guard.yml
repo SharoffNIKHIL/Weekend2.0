@@ -1,0 +1,72 @@
+# .github/workflows/branch-guard.yml
+# Enforces docs/BRANCHING.md: env values stay on their env branch; Terraform stays fmt/validate-clean.
+# No AWS credentials are used: validate runs with -backend=false.
+name: branch-guard
+
+on:
+  pull_request:
+    branches: [main, dev, prod]
+
+permissions:
+  contents: read
+
+jobs:
+  values-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Block env values on the wrong branch
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "origin/${BASE}...HEAD")
+          values=$(echo "$changed" | grep -E '^infra/envs/[^/]+/values\.auto\.tfvars$' || true)
+          echo "Target branch: ${BASE}"
+          echo "Values files changed: ${values:-none}"
+          if [ "$BASE" = "main" ] && [ -n "$values" ]; then
+            echo "::error::Env values must not reach main. Promote code only (cherry-pick into promote/<topic>)."
+            exit 1
+          fi
+          if [ "$BASE" != "main" ]; then
+            wrong=$(echo "$values" | grep -v "^infra/envs/${BASE}/" || true)
+            if [ -n "$wrong" ]; then
+              echo "::error::PR into ${BASE} touches another environment's values: ${wrong}"
+              exit 1
+            fi
+          fi
+
+      - name: Block secrets-looking content in values files
+        run: |
+          set -euo pipefail
+          files=$(ls infra/envs/*/values.auto.tfvars 2>/dev/null || true)
+          [ -z "$files" ] && exit 0
+          if grep -nE '(^|[^0-9])[0-9]{12}([^0-9]|$)|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|AKIA[0-9A-Z]{12,}|tskey-' $files; then
+            echo "::error::Values files are public: no account IDs, e-mails or keys (use git-ignored terraform.tfvars)."
+            exit 1
+          fi
+
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [infra/bootstrap, infra/envs/dev, infra/envs/prod]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+
+      - name: fmt
+        run: terraform fmt -check -recursive infra
+
+      - name: validate
+        working-directory: ${{ matrix.root }}
+        run: |
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate -no-color
