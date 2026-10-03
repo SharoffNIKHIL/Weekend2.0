@@ -1,6 +1,6 @@
 # Weekend 2.0 — Personal AI Assistant: Design Document
 
-> **Doc version:** 0.2.1 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
+> **Doc version:** 0.3.0 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
 > **Last updated:** 2026-10-03 (IST) · **Applies to:** prices and versions checked on 2026-10-02/03 · **Cloud:** Google Cloud (D4 decided 2026-10-03)
 > **Currency:** USD 1 = INR 96.3 (mid-market, 2026-10-02, [Trading Economics](https://tradingeconomics.com/india/currency)). All INR figures are rounded.
 
@@ -14,6 +14,7 @@ Newest first. Every change to this document adds a row here. Feature releases ha
 
 | Doc version | Date (IST) | Type | Summary | Sections changed |
 |---|---|---|---|---|
+| 0.3.0 | 2026-10-03 | Minor | **Application language: Java 17 + Spring Boot 4.1** (owner's choice; replaces the Python/FastAPI plan). Application core built on `Feature_code` (`app/`): agent loop, tool plugins, memory, reminders, retention, P6 export/delete, signed sessions, PWA UI | 7.2, 18 |
 | 0.2.1 | 2026-10-03 | Patch | Dev is **free by default**: CMEK, entry node and NAT are switches that default to off ("on hold"); dev project `weekend2-0` created; billing account found closed | 21.4 |
 | 0.2.0 | 2026-10-03 | Major | **D4 decided: Google Cloud** (AWS dropped). Architecture moved to Cloud Run + Firestore + Vertex AI + e2-micro tailnet node; new 🔓 exit (Claude via Vertex global endpoint); cost re-estimated (≈ ₹2,784/month prod incl. GST); Terraform rewritten for GCP. Earlier AWS content is superseded. | Header, 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 16–22, 24, App. A, C |
 | 0.1.3 | 2026-10-02 | Patch | Owner-exported FigJam diagrams added as images (docs/diagrams/: .jpg images, .svg exports, .mmd sources) | 5, 9, 16 |
@@ -292,7 +293,7 @@ The chat assistant is the "brain plus manager". It takes your message, gathers t
 5. **Stream** the answer to the app with Server-Sent Events.
 6. **After the turn:** save it, extract candidate memories (§10), write an audit entry (§19).
 
-**Tech (PROVISIONAL):** Python 3.12, FastAPI on Cloud Run, the official `anthropic` SDK's Vertex client (`AnthropicVertex`, install `anthropic[vertex]`), Pydantic v2, `google-cloud-firestore`. Pinned versions go into `requirements.txt` in Phase 1.
+**Tech (owner decision 2026-10-03):** **Java 17 + Spring Boot 4.1.1** on Cloud Run, Anthropic Java SDK 2.68.0 with the Vertex backend (`anthropic-java-vertex`), Maven, JUnit 6. ~~Python 3.12 + FastAPI~~ SUPERSEDED. Code: [`app/`](../app/README.md). Pinned versions go into `requirements.txt` in Phase 1.
 
 ### 7.3 Model options (D2)
 Prices are per million tokens (input / output), checked 2026-10-02 on [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing).

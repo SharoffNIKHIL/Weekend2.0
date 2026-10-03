@@ -1,6 +1,6 @@
 # Branching strategy — Weekend 2.0
 
-**Version 1.2 · 2026-10-03 · Owner: Nikhil** (1.2: cloud = GCP; 1.1: values in GitHub secrets; 1.0 superseded)
+**Version 1.3 · 2026-10-03 · Owner: Nikhil** (1.3: feature sequence, `feature_infra` merged + removed, `Feature_code`; 1.2: GCP; 1.1: values in secrets)
 
 The code is the same for every environment. **Environment values are never in the code.** They live in GitHub **environment secrets** and are written to a temporary `terraform.tfvars` only while a workflow runs.
 
@@ -10,7 +10,7 @@ The code is the same for every environment. **Environment values are never in th
 |---|---|---|---|---|
 | `main` | — | Base code: modules, env roots, scripts, docs, tracker | — (default branch) | Active |
 | `dev` | `main` | Integration branch for the dev environment (GCP project `weekend2-dev-<suffix>`, asia-south1) | Nothing yet; code is promoted to `main` later through `release` | Active |
-| `feature_<area>` | `dev` | One per piece of work. Many can exist at once, e.g. `feature_infra`, `feature_app`, `feature_mobile`, `feature_memory` | `dev` (PR) | `feature_infra` active |
+| `Feature_<area>` / `feature_<area>` | `dev` | One isolated feature at a time, developed and tested completely, then merged into `dev` and removed | `dev` (PR) | `feature_infra` ✅ merged (PR #2) and deleted · **`Feature_code` active** |
 | `release` | `main` | Future: stabilise a release (dev → release → main) | `main` | **Created, idle** |
 | `prod` | `main` | Future: the production environment | — | **Created, idle** (after D1) |
 
@@ -22,6 +22,17 @@ main ────●────────────────────
                         \        ↗ \        ↗
                          feature_infra    feature_app …   (PR → dev)
 ```
+
+## Feature sequence (owner's plan, 2026-10-03)
+Each feature is built in its own branch from `dev`, completely developed and tested against the `dev` base, merged by PR, then deleted:
+
+| # | Branch | Scope | Status |
+|---|---|---|---|
+| 1 | `feature_infra` | Terraform for GCP, CI, plan tooling | ✅ Merged into `dev` (PR #2), branch removed |
+| 2 | `Feature_code` | Java application core: agent, tools (plugins), memory, reminders, retention, API, PWA UI/UX — with in-memory adapters | 🟡 PR open |
+| 3 | `Feature_database` | Firestore adapters, vector index, queries, export to GCS | ⚪ Next |
+| 4 | `Feature_networking` | Entry-node ID-token proxy, Cloud Tasks reminders, Cloud Run deploy wiring | ⚪ |
+| 5 | `Feature_final` | Consolidation: end-to-end tests on dev GCP, release to `main` | ⚪ |
 
 ## Where values live
 

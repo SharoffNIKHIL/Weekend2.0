@@ -1,5 +1,5 @@
 # .github/workflows/branch-guard.yml
-# Enforces docs/BRANCHING.md: no env values in code; feature_* -> dev; prod/release idle; fmt/validate clean.
+# Enforces docs/BRANCHING.md: no env values in code; feature_*/Feature_* -> dev; prod/release idle; fmt/validate clean.
 # No cloud credentials are used: validate runs with -backend=false.
 name: branch-guard
 
@@ -30,6 +30,7 @@ jobs:
               echo "::error::${BASE} is created but idle; no PRs into it yet (docs/BRANCHING.md)."
               exit 1 ;;
           esac
+          shopt -s nocasematch   # feature_infra, Feature_code, …
           if [[ "$HEAD" == feature_* && "$BASE" != "dev" ]]; then
             echo "::error::Feature branches merge into dev only."
             exit 1

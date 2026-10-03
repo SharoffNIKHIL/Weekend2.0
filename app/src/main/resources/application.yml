@@ -1,0 +1,44 @@
+# app/src/main/resources/application.yml — defaults; Cloud Run overrides via environment variables.
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: weekend-assistant
+  main:
+    banner-mode: "off"
+
+weekend:
+  owner-timezone: Asia/Kolkata
+  llm:
+    provider: ${WEEKEND_LLM_PROVIDER:local}          # local (offline) | vertex (Claude on Vertex AI)
+    gcp-project: ${GCP_PROJECT:}
+    vertex-location: ${VERTEX_LOCATION:global}       # "global" = 🔓 may leave India (DESIGN §7.4)
+    model-default: ${MODEL_DEFAULT:claude-haiku-4-5@20251001}
+    model-strong: ${MODEL_STRONG:claude-sonnet-5}
+    max-output-tokens: 1024
+    default-input-price: 1.00                        # USD per million tokens (Haiku 4.5)
+    default-output-price: 5.00
+    strong-input-price: 2.00                         # Sonnet 5 (confirm on Vertex pricing, I-19/R-1)
+    strong-output-price: 10.00
+  agent:
+    max-tool-steps: 5
+    max-memories-in-context: 8
+    max-history-turns: 20
+    strong-model-min-chars: 1200
+    daily-cost-cap-usd: 0.62                         # ≈ ₹60/day (DESIGN §21.5)
+  retention:                                         # P5 (DESIGN §9.4)
+    messages: 365d
+    unpinned-memories: 180d
+    tool-calls: 90d
+    audit-log: 730d
+  security:
+    session-key: ${WEEKEND_SESSION_KEY:}             # from Secret Manager; never committed
+    session-ttl: 12h
+    require-session: ${WEEKEND_REQUIRE_SESSION:true} # fail closed
+
+logging:
+  level:
+    root: INFO
+    com.weekend: ${LOG_LEVEL:INFO}

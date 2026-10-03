@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f3864">
+  <meta name="referrer" content="no-referrer">
+  <title>Weekend</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="brand">Weekend</h1>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" aria-selected="true" data-tab="chat" id="tab-chat">Chat</button>
+      <button role="tab" aria-selected="false" data-tab="memories" id="tab-memories">Memories</button>
+      <button role="tab" aria-selected="false" data-tab="reminders" id="tab-reminders">Reminders</button>
+      <button role="tab" aria-selected="false" data-tab="data" id="tab-data">Data</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="panel-chat" class="panel" role="tabpanel" aria-labelledby="tab-chat">
+      <ol id="messages" class="messages" aria-live="polite" aria-label="Conversation"></ol>
+      <div id="pending" class="pending" hidden>
+        <p id="pending-text"></p>
+        <div class="row">
+          <button id="pending-yes" class="primary">Yes, do it</button>
+          <button id="pending-no">No</button>
+        </div>
+      </div>
+      <form id="composer" class="composer" autocomplete="off">
+        <label class="sr-only" for="input">Message</label>
+        <textarea id="input" rows="1" maxlength="8000" placeholder="Ask Weekend…" required></textarea>
+        <label class="toggle" title="Use the stronger model">
+          <input type="checkbox" id="think"> <span>Think harder</span>
+        </label>
+        <button type="submit" class="primary" id="send">Send</button>
+      </form>
+    </section>
+
+    <section id="panel-memories" class="panel" role="tabpanel" aria-labelledby="tab-memories" hidden>
+      <p class="hint">Everything Weekend remembers. Pinned memories never expire; unpinned ones expire after 180 days unused.</p>
+      <ul id="memory-list" class="list"></ul>
+    </section>
+
+    <section id="panel-reminders" class="panel" role="tabpanel" aria-labelledby="tab-reminders" hidden>
+      <p class="hint">Ask in chat, e.g. "remind me to rotate the staging key on 15 Oct at 9am". You confirm before it's saved.</p>
+      <ul id="reminder-list" class="list"></ul>
+    </section>
+
+    <section id="panel-data" class="panel" role="tabpanel" aria-labelledby="tab-data" hidden>
+      <h2>Your data</h2>
+      <p class="hint">Download everything Weekend holds about you, or delete it all permanently.</p>
+      <button id="export" class="primary">Download export (JSON)</button>
+      <form id="delete-form" class="danger-zone">
+        <label for="delete-phrase">To delete everything, type <strong>DELETE ALL MY DATA</strong></label>
+        <input id="delete-phrase" autocomplete="off">
+        <button type="submit" class="danger">Delete all my data</button>
+      </form>
+      <h2>Session</h2>
+      <p class="hint">Until passkey login ships (Phase 2), paste your session token here. It stays in this tab only.</p>
+      <form id="token-form" class="row">
+        <label class="sr-only" for="token">Session token</label>
+        <input id="token" type="password" autocomplete="off" placeholder="Session token">
+        <button type="submit">Save</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="app.js" defer></script>
+</body>
+</html>

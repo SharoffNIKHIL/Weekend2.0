@@ -1,0 +1,7 @@
+# app/src/test/resources/application-test.yml — test-only key (not a real secret)
+weekend:
+  llm:
+    provider: local
+  security:
+    session-key: test-only-session-key-0123456789abcdef
+    require-session: true
