@@ -1,0 +1,84 @@
+# .github/workflows/app-cd.yml — Application CD to dev Cloud Run (api + worker)
+# Runs after a PR into dev that touched app/ is MERGED. Gates, all required:
+#   1. repository variable APP_CD_ENABLED == 'true'   (off until the owner turns it on)
+#   2. the pushed commit belongs to a merged PR
+#   3. GitHub environment "dev-apply" — owner is the required reviewer ("Approve and deploy")
+# Steps: test → build image → push to Artifact Registry (<prefix>-app, cleanup keeps 2) → new
+# Cloud Run revisions. Terraform ignores image changes (modules/app lifecycle). Free tier:
+# Cloud Run scales to zero; registry ≤ 0.5 GB. Identity: least-privilege deployer via WIF.
+name: app-cd
+
+on:
+  push:
+    branches: [dev]
+    paths: ["app/**", ".github/workflows/app-cd.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-cd-dev
+  cancel-in-progress: false
+
+jobs:
+  merged-pr:
+    if: vars.APP_CD_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Require a merged PR for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          n=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                --jq '[.[] | select(.merged_at != null and .base.ref == "dev")][0].number // empty')
+          if [ -z "$n" ]; then echo "::error::${GITHUB_SHA} is not from a merged PR into dev; refusing to deploy."; exit 1; fi
+          echo "Commit comes from merged PR #$n"
+
+  deploy:
+    needs: merged-pr
+    runs-on: ubuntu-latest
+    environment: dev-apply
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Test
+        working-directory: app
+        run: mvn -B verify
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Build, push and deploy
+        env:
+          PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          val() { sed -nE "s/^$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" infra/values/dev.tfvars; }
+          REGION=$(val region); ENV=$(val env); PREFIX="weekend2-${ENV}"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${PREFIX}-app/weekend-assistant:${GITHUB_SHA::12}"
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build --pull -t "$IMAGE" app/
+          docker push "$IMAGE" > /dev/null
+          for svc in api worker; do
+            gcloud run services update "${PREFIX}-${svc}" --project "$PROJECT" --region "$REGION" \
+              --image "$IMAGE" --quiet --format='value(status.latestReadyRevisionName)'
+          done
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f gha-creds-*.json

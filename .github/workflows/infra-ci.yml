@@ -1,0 +1,134 @@
+# .github/workflows/infra-ci.yml — Infrastructure CI (owner rule 2026-10-03)
+# Every PR that touches infra/: terraform fmt → tflint → validate → ruff (scripts) → terraform plan
+# → cost guard (report only) → masked plan posted as a PR comment. Never applies.
+# Plan runs only for PRs into a branch that holds env values (dev today; prod later), with the
+# READ-ONLY plan service account through Workload Identity Federation (no keys). Identifying values
+# come from the GitHub environment's secrets; non-identifying values from infra/values/<env>.tfvars.
+#   Environment "<env>" secrets: GCP_PROJECT_ID, GCP_BILLING_ACCOUNT_ID, ALERT_EMAIL,
+#                                GCP_WIF_PROVIDER, GCP_PLAN_SERVICE_ACCOUNT
+name: infra-ci
+
+on:
+  pull_request:
+    branches: [dev, main, release, prod]
+    paths: ["infra/**", ".github/workflows/infra-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+        with:
+          tflint_version: v0.64.0
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff infra
+
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # plugin download rate limit
+        run: |
+          tflint --init --config "$PWD/infra/.tflint.hcl"
+          tflint --recursive --chdir infra --config "$PWD/infra/.tflint.hcl" --format compact
+
+      - name: terraform validate
+        run: |
+          set -euo pipefail
+          for root in infra/bootstrap infra/stack; do
+            terraform -chdir="$root" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="$root" validate -no-color
+          done
+
+      - name: ruff (infra scripts)
+        run: pipx run ruff==0.16.10 check infra/scripts
+
+  plan:
+    needs: lint
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'dev' || github.base_ref == 'prod'
+    runs-on: ubuntu-latest
+    environment: ${{ github.base_ref || 'dev' }}
+    permissions:
+      contents: read
+      id-token: write       # OIDC → Workload Identity Federation
+      pull-requests: write  # post the plan comment
+    env:
+      ENV_NAME: ${{ github.base_ref || 'dev' }}
+      HAS_WIF: ${{ secrets.GCP_WIF_PROVIDER != '' }}
+    steps:
+      - name: Skip when GCP access is not configured yet
+        if: env.HAS_WIF != 'true'
+        run: echo "::notice::environment secret GCP_WIF_PROVIDER is not set; plan skipped (infra/README.md → CI/CD setup)."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HAS_WIF == 'true'
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        if: env.HAS_WIF == 'true'
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.HAS_WIF == 'true'
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_PLAN_SERVICE_ACCOUNT }}
+
+      - name: Write secrets.auto.tfvars (runner only, never committed)
+        if: env.HAS_WIF == 'true'
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_BILLING_ACCOUNT_ID: ${{ secrets.GCP_BILLING_ACCOUNT_ID }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'project_id = "%s"\nbilling_account_id = "%s"\nalert_email = "%s"\n' \
+            "$GCP_PROJECT_ID" "$GCP_BILLING_ACCOUNT_ID" "$ALERT_EMAIL" > infra/stack/secrets.auto.tfvars
+
+      - name: terraform plan (masked report)
+        if: env.HAS_WIF == 'true'
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          python3 infra/scripts/plan_env.py --env "$ENV_NAME" --state-bucket "${GCP_PROJECT_ID}-tfstate" \
+            --plan-file "$RUNNER_TEMP/tfplan" --json "$RUNNER_TEMP/plan.json" --out plan.md
+
+      - name: Cost guard (would CD auto-apply this?)
+        if: env.HAS_WIF == 'true'
+        run: |
+          set -uo pipefail
+          if python3 infra/scripts/cost_guard.py "$RUNNER_TEMP/plan.json" 2> guard.txt; then
+            printf '\n### Cost guard: ✅ free of cost — CD may auto-apply after approval\n' >> plan.md
+          else
+            printf '\n### Cost guard: ❌ NOT free — CD will refuse; apply by hand after a checkpoint\n```\n%s\n```\n' "$(cat guard.txt)" >> plan.md
+          fi
+
+      - name: Post plan to the PR
+        if: env.HAS_WIF == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          head -c 60000 plan.md > comment.md   # GitHub comment limit is 65,536 characters
+          gh pr comment "$PR" --body-file comment.md
+
+      - name: Remove secrets and credentials
+        if: always()
+        run: rm -f infra/stack/secrets.auto.tfvars "$RUNNER_TEMP/tfplan" "$RUNNER_TEMP/plan.json" gha-creds-*.json

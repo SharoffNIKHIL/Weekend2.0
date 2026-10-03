@@ -1,9 +1,10 @@
-# .github/workflows/app-ci.yml — build and test the Java app on every PR that touches app/
+# .github/workflows/app-ci.yml — Application CI: test (JUnit, 40+) → package → Docker image build (no push)
+# on every PR that touches app/. Deployment is app-cd.yml.
 name: app-ci
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, release, prod]
     paths: ["app/**", ".github/workflows/app-ci.yml"]
   workflow_dispatch:
 
@@ -34,3 +35,12 @@ jobs:
         with:
           name: surefire-reports
           path: app/target/surefire-reports
+
+  image:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the container image (proves the Dockerfile; not pushed)
+        run: docker build --pull -t weekend-assistant:ci app/

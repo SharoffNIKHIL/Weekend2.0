@@ -1,12 +1,12 @@
 # infra/scripts/gcp_check.py
 """Read-only pre-flight check of the owner's Google Cloud connection before any Terraform run.
 
-Checks the gcloud user login, Application Default Credentials (what Terraform uses), the
+Checks the gcloud user login, the short-lived deployer token Terraform uses (impersonation), the
 billing account state, the project's billing link and the APIs the stack needs. It never
 creates, changes or deletes anything. Billing account IDs are masked in the output.
 
 Usage (from the repo root):
-    python3 infra/scripts/gcp_check.py --project weekend2-0
+    python3 infra/scripts/gcp_check.py --project weekend2-0 --deployer weekend2-dev-tf@weekend2-0.iam.gserviceaccount.com
 Exit code: 0 = ready to plan/apply, 1 = blocked (reasons printed), 2 = gcloud missing.
 """
 from __future__ import annotations
@@ -36,13 +36,14 @@ def mask(text: str) -> str:
 
 def gcloud(*args: str) -> tuple[int, str]:
     """Run a read-only gcloud command; return (exit code, stdout or stderr)."""
-    proc = subprocess.run(["gcloud", *args], capture_output=True, text=True)
+    proc = subprocess.run(["gcloud", *args], capture_output=True, text=True, check=False)
     return proc.returncode, (proc.stdout if proc.returncode == 0 else proc.stderr).strip()
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True, help="GCP project ID, e.g. weekend2-0")
+    ap.add_argument("--deployer", help="deployer service account e-mail to test impersonation (bootstrap output)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -58,11 +59,14 @@ def main() -> int:
     else:
         LOG.info("gcloud user login: OK")
 
-    rc, _ = gcloud("auth", "application-default", "print-access-token")
-    if rc != 0:
-        blockers.append("Application Default Credentials missing/expired: run `gcloud auth application-default login`")
-    else:
-        LOG.info("Application Default Credentials: OK")
+    # Terraform uses a 1-hour impersonated token (infra/scripts/tf.py), not Application Default Credentials.
+    if args.deployer:
+        rc, _ = gcloud("auth", "print-access-token", f"--impersonate-service-account={args.deployer}")
+        if rc != 0:
+            blockers.append("cannot impersonate the deployer: apply infra/bootstrap (deployer.tf) and check "
+                            "roles/iam.serviceAccountTokenCreator")
+        else:
+            LOG.info("short-lived deployer token (impersonation): OK")
 
     rc, out = gcloud("projects", "describe", args.project, "--format=json")
     if rc != 0:

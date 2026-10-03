@@ -8,6 +8,8 @@
 #      Compute) use that key
 #   5. GitHub Actions → GCP via Workload Identity Federation: a read-only plan service account,
 #      usable only from this repo's matching GitHub environment. No JSON keys anywhere.
+#   6. Least-privilege DEPLOYER service account <prefix>-tf (deployer.tf): used by the owner through
+#      impersonation (1-hour tokens) and by the CD workflow from the <env> branch only.
 
 provider "google" {
   project               = var.project_id
@@ -39,6 +41,8 @@ data "google_project" "this" {
 locals {
   services = [
     "aiplatform.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "cloudbilling.googleapis.com",
     "billingbudgets.googleapis.com",
     "cloudkms.googleapis.com",
     "cloudresourcemanager.googleapis.com",
@@ -169,9 +173,11 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository"  = "assertion.repository"
     "attribute.environment" = "assertion.environment"
     "attribute.ref"         = "assertion.ref"
+    "attribute.env_ref"     = "assertion.environment + '@' + assertion.ref"
   }
-  # Only this repo, only jobs running in the matching GitHub environment (fork PRs get no token).
-  attribute_condition = "assertion.repository == '${var.github_repository}' && assertion.environment == '${var.env}'"
+  # Only this repo, only jobs running in the matching GitHub environments (fork PRs get no token):
+  # "<env>" = read-only plan on PRs; "<env>-apply" = CD after the owner approves the deployment.
+  attribute_condition = "assertion.repository == '${var.github_repository}' && (assertion.environment == '${var.env}' || assertion.environment == '${var.env}-apply')"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

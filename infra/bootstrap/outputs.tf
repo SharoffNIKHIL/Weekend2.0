@@ -18,3 +18,8 @@ output "plan_service_account" {
   description = "Set as GitHub environment secret GCP_PLAN_SERVICE_ACCOUNT."
   value       = google_service_account.github_plan.email
 }
+
+output "deployer_service_account" {
+  description = "Least-privilege deployer: set as GitHub environment secret GCP_DEPLOY_SERVICE_ACCOUNT (<env>-apply) and in ../credentials/<project>-<env>.terraform.json."
+  value       = google_service_account.deployer.email
+}
