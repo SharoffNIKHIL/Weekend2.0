@@ -1,11 +1,11 @@
 # .github/workflows/branch-guard.yml
-# Enforces docs/BRANCHING.md: env values stay on their env branch; Terraform stays fmt/validate-clean.
+# Enforces docs/BRANCHING.md: no env values in code; feature_* -> dev; prod/release idle; fmt/validate clean.
 # No AWS credentials are used: validate runs with -backend=false.
 name: branch-guard
 
 on:
   pull_request:
-    branches: [main, dev, prod]
+    branches: [main, dev, prod, release]
 
 permissions:
   contents: read
@@ -18,36 +18,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Block env values on the wrong branch
+      - name: Branch rules (feature_* -> dev only; prod and release are idle)
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          echo "PR: ${HEAD} -> ${BASE}"
+          case "$BASE" in
+            prod|release)
+              echo "::error::${BASE} is created but idle; no PRs into it yet (docs/BRANCHING.md)."
+              exit 1 ;;
+          esac
+          if [[ "$HEAD" == feature_* && "$BASE" != "dev" ]]; then
+            echo "::error::Feature branches merge into dev only."
+            exit 1
+          fi
+
+      - name: No env values in code
         env:
           BASE: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          changed=$(git diff --name-only "origin/${BASE}...HEAD")
-          values=$(echo "$changed" | grep -E '^infra/envs/[^/]+/values\.auto\.tfvars$' || true)
-          echo "Target branch: ${BASE}"
-          echo "Values files changed: ${values:-none}"
-          if [ "$BASE" = "main" ] && [ -n "$values" ]; then
-            echo "::error::Env values must not reach main. Promote code only (cherry-pick into promote/<topic>)."
+          bad=$(git diff --name-only --diff-filter=AM "origin/${BASE}...HEAD" | grep -E '\.tfvars$' || true)
+          tracked=$(git ls-files | grep -E '\.tfvars$' || true)
+          if [ -n "$bad$tracked" ]; then
+            echo "::error::Env values live in GitHub environment secrets, not in code: ${bad} ${tracked}"
             exit 1
           fi
-          if [ "$BASE" != "main" ]; then
-            wrong=$(echo "$values" | grep -v "^infra/envs/${BASE}/" || true)
-            if [ -n "$wrong" ]; then
-              echo "::error::PR into ${BASE} touches another environment's values: ${wrong}"
-              exit 1
-            fi
-          fi
-
-      - name: Block secrets-looking content in values files
-        run: |
-          set -euo pipefail
-          files=$(ls infra/envs/*/values.auto.tfvars 2>/dev/null || true)
-          [ -z "$files" ] && exit 0
-          if grep -nE '(^|[^0-9])[0-9]{12}([^0-9]|$)|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|AKIA[0-9A-Z]{12,}|tskey-' $files; then
-            echo "::error::Values files are public: no account IDs, e-mails or keys (use git-ignored terraform.tfvars)."
-            exit 1
-          fi
+          echo "No tfvars committed."
 
   terraform:
     runs-on: ubuntu-latest

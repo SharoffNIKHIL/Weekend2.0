@@ -16,8 +16,7 @@ __pycache__/
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
-# Env values (non-sensitive) are committed on their env branch only — see docs/BRANCHING.md
-!infra/envs/*/values.auto.tfvars
+# Env values are never committed: they live in GitHub environment secrets (docs/BRANCHING.md)
 backend.hcl
 crash.log
 # Terraform saved plans hold variable values (account ID, e-mail) in cleartext

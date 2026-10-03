@@ -26,3 +26,9 @@ variable "project_name" {
   type        = string
   default     = "weekend2"
 }
+
+variable "github_repository" {
+  description = "GitHub repository (owner/name) allowed to assume the dev plan role via OIDC."
+  type        = string
+  default     = "SharoffNIKHIL/Weekend2.0"
+}

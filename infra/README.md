@@ -10,9 +10,9 @@ Your phone and Mac reach a **t4g.nano entry node** over the Tailscale tailnet. T
 ## Layout
 ```
 infra/
-├── bootstrap/            # remote-state bucket (local state, run once)
+├── bootstrap/            # remote-state bucket + GitHub OIDC read-only plan role (local state, run once)
 ├── scripts/plan_env.py   # terraform plan → masked Markdown report for PRs (nothing applied)
-├── envs/dev/             # dev root; its values (values.auto.tfvars) live on the `dev` branch
+├── envs/dev/             # dev root; values come from GitHub `dev` environment secrets
 ├── envs/prod/            # prod: wires the modules together
 └── modules/
     ├── network/          # VPC 10.20.0.0/16, public-a (entry node), private-a/b (Aurora), no NAT
@@ -30,7 +30,7 @@ infra/
 ```
 
 ## Branches and environment values
-`main` holds the base code only. Each environment's non-sensitive values are in `infra/envs/<env>/values.auto.tfvars`, committed **only on that environment's branch** (`dev` now, `prod` after D1). Work happens on `feature_<topic>` branches cut from `dev`. Sensitive values (`aws_account_id`, `alert_email`) stay in the git-ignored `terraform.tfvars`. The full flow and the CI guard rails are in [docs/BRANCHING.md](../docs/BRANCHING.md).
+Branches: `main` holds the base code. `dev`, `prod` and `release` were created from `main`; `prod` and `release` stay idle for now. Work happens on `feature_<area>` branches cut from `dev` (e.g. `feature_infra`), and each one merges back into `dev` by PR. **Env values are never in the code.** They are stored in the GitHub `dev` environment secrets (`TFVARS`, `AWS_ACCOUNT_ID`, `ALERT_EMAIL`, `AURORA_ENGINE_VERSION`, `AWS_PLAN_ROLE_ARN`). The `terraform-plan` workflow writes them to a temporary `terraform.tfvars` and posts the masked plan on the PR. Full flow: [docs/BRANCHING.md](../docs/BRANCHING.md).
 
 ## Versions (checked 2026-10-02)
 | Tool | Version | Source |
@@ -65,7 +65,7 @@ terraform version   # expect 1.16.x
    aws bedrock get-foundation-model-availability --model-id <MODEL_ID> --region ap-south-1   # expect AVAILABLE
    ```
 4. **Apply the tailnet policy**: copy [`tailscale/policy.hujson`](tailscale/policy.hujson) to `tailscale/policy.local.hujson` (git-ignored), replace `<OWNER_LOGIN>` there, and paste it into the Tailscale admin console. It replaces the default allow-all policy. Without it, any device on your tailnet can use the entry node, and through it the API (P1).
-5. Check out the environment branch (`git switch dev`), which brings `values.auto.tfvars`. Copy `terraform.tfvars.example` → `terraform.tfvars` and `backend.hcl.example` → `backend.hcl`. Both copies are git-ignored and hold your account ID and e-mail.
+5. For a local plan, copy `terraform.tfvars.example` → `terraform.tfvars` and `backend.hcl.example` → `backend.hcl`, and fill them in from your own copy of the values. Both copies are git-ignored. For CI, put the same values in the GitHub `dev` environment secrets.
 
 ## Run order
 ```bash

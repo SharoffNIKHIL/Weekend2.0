@@ -1,5 +1,33 @@
-# infra/envs/dev/terraform.tfvars.example — copy to terraform.tfvars (git-ignored)
-# SENSITIVE values only. Non-sensitive dev values live in values.auto.tfvars on the `dev` branch
-# (docs/BRANCHING.md). Terraform loads both files automatically.
+# infra/envs/dev/terraform.tfvars.example
+# Dev values are NOT in the code. They live in the GitHub `dev` environment secrets
+# (docs/BRANCHING.md). This file shows the format.
+#
+# - GitHub secret TFVARS        = the "Non-sensitive dev values" block below, filled in
+# - GitHub secret AWS_ACCOUNT_ID = the 12-digit account ID
+# - GitHub secret ALERT_EMAIL    = the budget alert e-mail
+# - GitHub secret AURORA_ENGINE_VERSION = the Aurora version (T-018)
+#
+# For a LOCAL plan, copy this file to terraform.tfvars (git-ignored) and fill it in.
+# GitHub secrets are write-only, so keep your own copy (e.g. in a password manager).
+
 aws_account_id = "<AWS_ACCOUNT_ID>"
 alert_email    = "<ALERT_EMAIL>"
+aurora_engine_version = "<AURORA_PG_VERSION>" # T-018: 16.3+ from describe-db-engine-versions in ap-south-1
+
+# --- Non-sensitive dev values (content of the TFVARS secret) ---
+env                             = "dev"
+region                          = "ap-south-1"
+vpc_cidr                        = "10.30.0.0/16"
+azs                             = ["ap-south-1a", "ap-south-1b"]
+public_subnet_cidr              = "10.30.0.0/24"
+private_subnet_cidrs            = ["10.30.10.0/24", "10.30.11.0/24"]
+entry_node_enabled              = true
+entry_node_instance_type        = "t4g.small" # EC2 T4g free trial (750 h/month) until 2026-12-31, then "t4g.nano"
+tailnet_hostname                = "node-d1"
+tailscale_tag                   = "tag:weekend-dev"
+aurora_max_acu                  = 1
+aurora_seconds_until_auto_pause = 300
+lambda_python_runtime           = "python3.14"
+bedrock_model_default           = "in.anthropic.claude-haiku-4-5-20251001-v1:0"
+bedrock_model_strong            = "in.anthropic.claude-haiku-4-5-20251001-v1:0"
+budget_limit_usd                = 12
