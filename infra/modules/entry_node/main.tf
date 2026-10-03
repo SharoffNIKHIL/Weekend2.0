@@ -1,7 +1,7 @@
 # infra/modules/entry_node/main.tf
 # The only server: an e2-micro that joins the tailnet and forwards requests to the internal
-# Cloud Run API, attaching a Google ID token from its own service account. NO external IP:
-# egress via Cloud NAT, admin via IAP SSH + OS Login. Shielded VM.
+# Cloud Run API, attaching a Google ID token from its own service account. Egress via Cloud NAT
+# (default) or an egress-only external IP; admin via IAP SSH + OS Login. Shielded VM.
 
 resource "google_service_account" "entry" {
   account_id   = "${var.name_prefix}-entry"
@@ -50,7 +50,15 @@ resource "google_compute_instance" "this" {
 
   network_interface {
     subnetwork = var.subnet_id
-    # no access_config block → no external IP
+
+    # Egress-only external IP when the env doesn't use Cloud NAT. No inbound firewall rules
+    # exist except SSH from Google's IAP range, so the IP accepts nothing else.
+    dynamic "access_config" {
+      for_each = var.external_ip ? [1] : []
+      content {
+        network_tier = "STANDARD"
+      }
+    }
   }
 
   shielded_instance_config {

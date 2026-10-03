@@ -5,8 +5,8 @@ output "state_bucket" {
 }
 
 output "kms_key_id" {
-  description = "CMEK key used by the env stack."
-  value       = google_kms_crypto_key.data.id
+  description = "CMEK key used by the env stack (null when enable_cmek = false)."
+  value       = try(google_kms_crypto_key.data[0].id, null)
 }
 
 output "wif_provider" {

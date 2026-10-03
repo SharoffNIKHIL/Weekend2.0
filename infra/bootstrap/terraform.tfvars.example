@@ -1,4 +1,6 @@
 # infra/bootstrap/terraform.tfvars.example — copy to terraform.tfvars (git-ignored)
-project_id         = "<GCP_PROJECT_ID>" # e.g. weekend2-dev-<suffix>
+project_id         = "<GCP_PROJECT_ID>"     # dev: the WeekEnd2-0 project
 env                = "dev"
 billing_account_id = "<BILLING_ACCOUNT_ID>" # optional: lets the CI plan read budgets
+enable_cmek        = false                  # dev: on hold (KMS costs); prod: true
+state_location     = "us-central1"          # dev: 5 GB free; prod: leave unset (asia-south1)

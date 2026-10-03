@@ -2,9 +2,10 @@
 # One-time, per environment project (local state, run by the owner):
 #   1. enable the APIs the stack needs
 #   2. Terraform state bucket (GCS: versioned, private; native state locking)
-#   3. the project's CMEK key ring + key (P3). GCP key rings can never be deleted, so they
-#      live here, outside the destroyable env stack
-#   4. let Google service agents (Firestore, Secret Manager, Storage, Compute) use that key
+#   3. OPTIONAL (enable_cmek, small monthly cost): the project's CMEK key ring + key (P3).
+#      GCP key rings can never be deleted, so they live here, outside the destroyable env stack
+#   4. OPTIONAL (enable_cmek): let Google service agents (Firestore, Secret Manager, Storage,
+#      Compute) use that key
 #   5. GitHub Actions → GCP via Workload Identity Federation: a read-only plan service account,
 #      usable only from this repo's matching GitHub environment. No JSON keys anywhere.
 
@@ -29,7 +30,11 @@ provider "google-beta" {
   billing_project       = var.project_id
 }
 
-data "google_project" "this" {}
+# Only needed to name the Compute service agent for CMEK; skipped otherwise so the very first
+# plan works before the Cloud Resource Manager API is enabled.
+data "google_project" "this" {
+  count = var.enable_cmek ? 1 : 0
+}
 
 locals {
   services = [
@@ -65,7 +70,7 @@ resource "google_project_service" "this" {
 # ---------- Terraform state ----------
 resource "google_storage_bucket" "tfstate" {
   name                        = "${var.project_id}-tfstate"
-  location                    = var.region
+  location                    = coalesce(var.state_location, var.region)
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
@@ -92,6 +97,8 @@ resource "google_storage_bucket" "tfstate" {
 
 # ---------- CMEK (P3) ----------
 resource "google_kms_key_ring" "this" {
+  count = var.enable_cmek ? 1 : 0
+
   name     = local.prefix
   location = var.region
 
@@ -99,8 +106,10 @@ resource "google_kms_key_ring" "this" {
 }
 
 resource "google_kms_crypto_key" "data" {
+  count = var.enable_cmek ? 1 : 0
+
   name            = "data"
-  key_ring        = google_kms_key_ring.this.id
+  key_ring        = google_kms_key_ring.this[0].id
   purpose         = "ENCRYPT_DECRYPT"
   rotation_period = "31536000s" # 365 days
 
@@ -111,7 +120,7 @@ resource "google_kms_crypto_key" "data" {
 
 resource "google_project_service_identity" "this" {
   provider = google-beta
-  for_each = toset(["firestore.googleapis.com", "secretmanager.googleapis.com"])
+  for_each = var.enable_cmek ? toset(["firestore.googleapis.com", "secretmanager.googleapis.com"]) : toset([])
 
   service = each.value
 
@@ -119,22 +128,24 @@ resource "google_project_service_identity" "this" {
 }
 
 data "google_storage_project_service_account" "this" {
+  count = var.enable_cmek ? 1 : 0
+
   depends_on = [google_project_service.this]
 }
 
 locals {
-  key_users = {
+  key_users = var.enable_cmek ? {
     firestore     = "serviceAccount:${google_project_service_identity.this["firestore.googleapis.com"].email}"
     secretmanager = "serviceAccount:${google_project_service_identity.this["secretmanager.googleapis.com"].email}"
-    storage       = "serviceAccount:${data.google_storage_project_service_account.this.email_address}"
-    compute       = "serviceAccount:service-${data.google_project.this.number}@compute-system.iam.gserviceaccount.com"
-  }
+    storage       = "serviceAccount:${data.google_storage_project_service_account.this[0].email_address}"
+    compute       = "serviceAccount:service-${data.google_project.this[0].number}@compute-system.iam.gserviceaccount.com"
+  } : {}
 }
 
 resource "google_kms_crypto_key_iam_member" "service_agents" {
   for_each = local.key_users
 
-  crypto_key_id = google_kms_crypto_key.data.id
+  crypto_key_id = google_kms_crypto_key.data[0].id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = each.value
 }

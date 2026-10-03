@@ -15,10 +15,13 @@ alert_email        = "<ALERT_EMAIL>"
 # --- Non-sensitive dev values (content of the TFVARS secret) ---
 env                     = "dev"
 region                  = "asia-south1"
+backup_location         = "US-CENTRAL1"   # 5 GB free
+enable_cmek             = false           # on hold: KMS costs
+entry_node_enabled      = false           # on hold: egress costs (NAT ≈ $1/month)
+entry_node_egress       = "nat"
 node_region             = "us-central1"   # always-free e2-micro region (dev holds no real data)
 node_zone               = "us-central1-a"
 subnet_cidr             = "10.30.0.0/24"
-entry_node_enabled      = true
 entry_node_machine_type = "e2-micro"
 tailnet_hostname        = "node-d1"
 tailscale_tag           = "tag:weekend-dev"

@@ -10,8 +10,9 @@ variable "region" {
 }
 
 variable "kms_key_id" {
-  description = "CMEK key (must be in the same location as the replica)."
+  description = "CMEK key in the replica's location. null = Google-managed encryption."
   type        = string
+  default     = null
 }
 
 variable "secrets" {

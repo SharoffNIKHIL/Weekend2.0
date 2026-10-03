@@ -59,7 +59,7 @@ resource "google_project_iam_member" "worker" {
 }
 
 resource "google_secret_manager_secret_iam_member" "api" {
-  for_each = toset(var.api_secret_ids)
+  for_each = var.api_secrets # static keys, so the plan works before the secrets exist
 
   secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"

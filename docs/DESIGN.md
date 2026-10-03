@@ -1,6 +1,6 @@
 # Weekend 2.0 — Personal AI Assistant: Design Document
 
-> **Doc version:** 0.2.0 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
+> **Doc version:** 0.2.1 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
 > **Last updated:** 2026-10-03 (IST) · **Applies to:** prices and versions checked on 2026-10-02/03 · **Cloud:** Google Cloud (D4 decided 2026-10-03)
 > **Currency:** USD 1 = INR 96.3 (mid-market, 2026-10-02, [Trading Economics](https://tradingeconomics.com/india/currency)). All INR figures are rounded.
 
@@ -14,6 +14,7 @@ Newest first. Every change to this document adds a row here. Feature releases ha
 
 | Doc version | Date (IST) | Type | Summary | Sections changed |
 |---|---|---|---|---|
+| 0.2.1 | 2026-10-03 | Patch | Dev is **free by default**: CMEK, entry node and NAT are switches that default to off ("on hold"); dev project `weekend2-0` created; billing account found closed | 21.4 |
 | 0.2.0 | 2026-10-03 | Major | **D4 decided: Google Cloud** (AWS dropped). Architecture moved to Cloud Run + Firestore + Vertex AI + e2-micro tailnet node; new 🔓 exit (Claude via Vertex global endpoint); cost re-estimated (≈ ₹2,784/month prod incl. GST); Terraform rewritten for GCP. Earlier AWS content is superseded. | Header, 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 16–22, 24, App. A, C |
 | 0.1.3 | 2026-10-02 | Patch | Owner-exported FigJam diagrams added as images (docs/diagrams/: .jpg images, .svg exports, .mmd sources) | 5, 9, 16 |
 | 0.1.2 | 2026-10-02 | Patch | FigJam board with 5 architecture diagrams (system, text flow, voice flow, network, data model) | 5 |
@@ -791,7 +792,7 @@ How the Expected Haiku figure is calculated: 2,400 turns × 3,000 input tokens =
 | Configuration | USD pre-tax | USD incl. 18% GST | INR incl. GST | Fits budget? |
 |---|---|---|---|---|
 | **Prod, text only (E2-GCP + Claude global)** | **≈ 24.5** | **≈ 29.0** | **≈ ₹2,784** | ✅ (≈ ₹2,216 headroom) |
-| Prod + dev (dev ≈ ₹243) | ≈ 26.7 | ≈ 31.5 | ≈ ₹3,030 | ✅ |
+| Prod + dev (dev free by default ≈ ₹113 Claude usage; ≈ ₹243 with costed items on) | ≈ 25.5 | ≈ 30.2 | ≈ ₹2,900 | ✅ |
 | Prod + Google voice (B) | ≈ 48.5 | ≈ 57.2 | ≈ ₹5,500 | ❌ over by ≈ ₹500 — try local STT/TTS first |
 | Local Mac (C) + Claude, text only | ≈ 15 + one-time hardware | ≈ 18 | ≈ ₹1,700 + ₹80k–1L once | ✅ monthly |
 

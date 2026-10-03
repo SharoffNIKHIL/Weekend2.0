@@ -1,6 +1,7 @@
 # infra/modules/network/main.tf
-# One custom VPC with one subnet for the entry node. The node has NO external IP: it reaches
-# the internet (Tailscale) through Cloud NAT and Google APIs through Private Google Access.
+# One custom VPC with one subnet for the entry node. The node reaches Google APIs through Private
+# Google Access and the internet (Tailscale) through Cloud NAT (enable_nat, ≈ $1/month) or, when
+# the env chooses it, its own external IP. VPC, subnet and firewall rules are free.
 # Cloud Run and Firestore are serverless and need no subnet. No inbound rules except
 # optional SSH from Google's IAP range (admin access without a public IP).
 
@@ -19,14 +20,18 @@ resource "google_compute_subnetwork" "node" {
 }
 
 resource "google_compute_router" "this" {
+  count = var.enable_nat ? 1 : 0
+
   name    = "${var.name_prefix}-router"
   network = google_compute_network.this.id
   region  = var.region
 }
 
 resource "google_compute_router_nat" "this" {
+  count = var.enable_nat ? 1 : 0
+
   name                                = "${var.name_prefix}-nat"
-  router                              = google_compute_router.this.name
+  router                              = google_compute_router.this[0].name
   region                              = var.region
   nat_ip_allocate_option              = "AUTO_ONLY"
   source_subnetwork_ip_ranges_to_nat  = "LIST_OF_SUBNETWORKS"

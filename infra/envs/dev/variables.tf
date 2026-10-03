@@ -64,9 +64,32 @@ variable "subnet_cidr" {
 }
 
 variable "entry_node_enabled" {
-  description = "Create the tailnet entry node. false = no VM (the internal-only API is then unreachable; useful for infra-only tests)."
+  description = "ON HOLD (egress costs). Create the tailnet entry node. false = no VM (the internal-only API is then unreachable)."
   type        = bool
-  default     = true
+  default     = false
+}
+
+variable "entry_node_egress" {
+  description = "How the node reaches the internet: \"nat\" (Cloud NAT ≈ $1/month, no public IP) or \"external_ip\" (egress-only IPv4; billing Not verified)."
+  type        = string
+  default     = "nat"
+
+  validation {
+    condition     = contains(["nat", "external_ip"], var.entry_node_egress)
+    error_message = "entry_node_egress must be nat or external_ip."
+  }
+}
+
+variable "enable_cmek" {
+  description = "ON HOLD (KMS cost). Use the bootstrap CMEK key for Firestore, secrets and the bucket. false = Google-managed encryption (dev only)."
+  type        = bool
+  default     = false
+}
+
+variable "backup_location" {
+  description = "Backup bucket location. US-CENTRAL1 gets 5 GB Standard storage free (dev holds no real data)."
+  type        = string
+  default     = "US-CENTRAL1"
 }
 
 variable "entry_node_machine_type" {

@@ -48,15 +48,15 @@ infra/
    gcloud auth login                         # opens the browser
    gcloud auth application-default login     # credentials Terraform uses
    ```
-2. **Create the dev project and link billing** (⚠️ security checkpoint: new project + billing):
+2. **Dev project:** ✅ `weekend2-0` ("WeekEnd2-0") was created on 2026-10-03, without billing. ⏸ To deploy, **re-open or create a billing account** (Console → Billing), then link it (⚠️ security checkpoint):
    ```bash
-   gcloud billing accounts list                                   # note the ID (keep it private)
-   gcloud projects create weekend2-dev-<suffix> --name="Weekend2 dev"
-   gcloud billing projects link weekend2-dev-<suffix> --billing-account=<BILLING_ACCOUNT_ID>
-   gcloud config set project weekend2-dev-<suffix>
-   gcloud auth application-default set-quota-project weekend2-dev-<suffix>
+   gcloud billing accounts list                                   # OPEN must be True
+   gcloud billing projects link weekend2-0 --billing-account=<BILLING_ACCOUNT_ID>
+   gcloud config set project weekend2-0
+   gcloud auth application-default login                          # Terraform's credentials (separate from gcloud auth login)
+   gcloud auth application-default set-quota-project weekend2-0
    ```
-3. **Enable Claude on Vertex AI** (⚠️ third-party terms and cost): Console → Vertex AI → Model Garden → search "Claude" → enable Claude Haiku 4.5 (and Sonnet 5 for prod) and accept Anthropic's terms. Model IDs used: `claude-haiku-4-5@20251001`, `claude-sonnet-5` (from Anthropic's Vertex docs, 2026-10-03).
+3. **Enable Claude on Vertex AI** (⚠️ third-party terms and cost; needs open billing — this is why enablement fails today): Console → Vertex AI → Model Garden → search "Claude" → enable Claude Haiku 4.5 (and Sonnet 5 for prod) and accept Anthropic's terms. Model IDs used: `claude-haiku-4-5@20251001`, `claude-sonnet-5` (from Anthropic's Vertex docs, 2026-10-03).
 4. **Apply the tailnet policy**: copy [`tailscale/policy.hujson`](tailscale/policy.hujson) to `tailscale/policy.local.hujson` (git-ignored), replace `<OWNER_LOGIN>`, and paste it into the Tailscale admin console.
 5. **Local values:** copy `terraform.tfvars.example` → `terraform.tfvars` and `backend.hcl.example` → `backend.hcl` in `bootstrap/` and `envs/dev/`. Both copies are git-ignored. For CI, put the same values in the GitHub `dev` environment secrets.
 
@@ -64,7 +64,8 @@ infra/
 ```bash
 mkdir -p ~/.tfplans && chmod 700 ~/.tfplans
 
-# 1. Bootstrap the dev project (APIs, state bucket, KMS, WIF). IAM change → security checkpoint.
+# 1. Bootstrap the dev project (APIs, state bucket, WIF; KMS only if enable_cmek). IAM change → security checkpoint.
+#    With enable_cmek = true (prod), enable the APIs first:  terraform apply -target=google_project_service.this
 cd infra/bootstrap && terraform init && terraform plan -out="$HOME/.tfplans/weekend2-bootstrap-dev.tfplan"
 terraform apply "$HOME/.tfplans/weekend2-bootstrap-dev.tfplan"
 terraform output   # state_bucket → backend.hcl; wif_provider + plan_service_account → GitHub secrets
@@ -101,13 +102,24 @@ terraform plan -destroy -out="$HOME/.tfplans/weekend2-dev-destroy.tfplan" && ter
 ```
 The KMS key ring and key belong to bootstrap and are never destroyed, because GCP key rings can't be deleted. A Cloud Tasks queue name can't be reused for about 7 days after deletion; if you re-create dev sooner, the apply fails on the queue. Firestore's `(default)` database may also take a few minutes before it can be re-created.
 
+## Free by default: what's on hold (dev)
+Dev deploys **only free-tier resources** unless you switch a costed item on. Every apply still needs an **open billing account** linked to the project, because Google's free tiers require one. Your current billing account is closed (checked 2026-10-03).
+
+| Item | Switch (dev default) | Cost when on | Status |
+|---|---|---|---|
+| Cloud Run api + worker, Firestore `(default)`, Secret Manager (2 secrets), Cloud Scheduler (2 jobs), Cloud Tasks, Logging, budget, WIF + plan service account, GCS state + backup buckets in US-CENTRAL1 | always on | $0 within free tiers | ✅ Free |
+| Cloud KMS key (CMEK, P3) | `enable_cmek = false` (bootstrap + dev) | ≈ $0.10/month | ⏸ On hold (Google-managed encryption meanwhile; prod must enable it) |
+| Entry node e2-micro (us-central1, always free) + 10 GB pd-standard (free) | `entry_node_enabled = false` | VM free, but egress isn't | ⏸ On hold |
+| Node egress | `entry_node_egress = "nat"` | Cloud NAT ≈ $1.02/month, or `"external_ip"` (IPv4 billing `Not verified`) | ⏸ On hold (with the node) |
+| Claude on Vertex AI | no resource; usage only | ≈ $1/month light dev use | ⏸ Blocked: Model Garden enablement needs open billing |
+
 ## Dev vs prod
 | Setting | Dev | Prod | Why |
 |---|---|---|---|
-| Project | `weekend2-dev-<suffix>` | `weekend2-prod-<suffix>` | One project per env; separate IAM, billing filter, blast radius |
-| Entry node | e2-micro **us-central1-a** (always free), pd-standard 10 GB, Google-managed disk key, can be switched off | e2-micro asia-south1-a, pd-balanced 10 GB, CMEK | Dev holds **no real personal data**, so the free US VM is acceptable; prod data stays in India |
+| Project | `weekend2-0` ("WeekEnd2-0", created 2026-10-03; Google rejects "." in names) | `weekend2-prod-<suffix>` (later) | One project per env; separate IAM, billing filter, blast radius |
+| Entry node | ⏸ off by default; when on: e2-micro **us-central1-a** (always free), pd-standard 10 GB, Google-managed disk key, NAT egress | e2-micro asia-south1-a, pd-balanced 10 GB, CMEK | Dev holds **no real personal data**, so the free US VM is acceptable; prod data stays in India |
 | Firestore | No delete protection, no backups | Delete protection, 7-day daily backups | Destroyable dev |
-| Backup bucket | 1-day retention, no soft delete, `force_destroy` | 35-day retention, 7-day soft delete | Destroy can empty it |
+| Backup bucket | US-CENTRAL1 (5 GB free), 1-day retention, no soft delete, `force_destroy`, CMEK ⏸ | 35-day retention, 7-day soft delete | Destroy can empty it |
 | Cloud Run | Max 1 instance, DEBUG, no deletion protection | Max 2, INFO, protected | Cost and safety |
 | Claude | Haiku 4.5 for both slots | Haiku 4.5 + Sonnet 5 | Cost |
 | Budget | ₹850 before tax (≈ ₹1,003 incl. GST) | ₹4,237 before tax (≈ ₹5,000 incl. GST) | GCP budgets exclude tax |
@@ -125,10 +137,10 @@ The KMS key ring and key belong to bootstrap and are never destroyed, because GC
 | | Pre-tax USD | Incl. 18% GST | ₹ / month |
 |---|---|---|---|
 | **Prod** (entry node 24/7, Claude ≈ 3,000 turns) | ≈ 24.5 | ≈ 29.0 | **≈ 2,784** |
-| **Dev** (free US e2-micro on, light Claude use) | ≈ 2.1 | ≈ 2.5 | **≈ 243** |
-| Dev with the node off | ≈ 1.1 | ≈ 1.3 | ≈ 127 |
+| **Dev, free by default** (all ⏸ items off; light Claude use) | ≈ 1.0 | ≈ 1.2 | **≈ 113** (₹0 infra) |
+| Dev with CMEK + entry node + NAT switched on | ≈ 2.1 | ≈ 2.5 | ≈ 243 |
 
-Prod plus dev ≈ ₹3,030, inside the ₹5,000 budget. The biggest lines are Claude (≈ $14.5) and the prod e2-micro (≈ $7.4). Cloud Run, Firestore, Secret Manager, Scheduler, Tasks and Logging stay inside their free tiers at single-user volume. An account billed by Google Cloud India adds 18% GST; confirm under Billing → Account management. Line-by-line rates and sources are in the tracker.
+Prod plus free dev ≈ ₹2,900, inside the ₹5,000 budget. The biggest lines are Claude (≈ $14.5) and the prod e2-micro (≈ $7.4). Cloud Run, Firestore, Secret Manager, Scheduler, Tasks and Logging stay inside their free tiers at single-user volume. An account billed by Google Cloud India adds 18% GST; confirm under Billing → Account management. Line-by-line rates and sources are in the tracker.
 
 ## Not yet included (later phases)
 Container image build + Artifact Registry with CMEK (Phase 1) · Firestore vector index (Phase 1) · per-object retention for monthly/audit copies (Phase 1) · Caddy + ID-token proxy on the entry node (Phase 2) · Speech-to-Text / Text-to-Speech permissions (Phase 2 voice decision) · VPC flow logs (cost decision) · CI apply pipeline (Phase 5).

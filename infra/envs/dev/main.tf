@@ -1,20 +1,25 @@
 # infra/envs/dev/main.tf
 # Weekend 2.0 — dev on GCP (D4 = GCP, 2026-10-03). PROVISIONAL — depends on D1/D2.
-# Free tier wherever GCP has one, and built to be destroyed:
-#   - entry node: always-free e2-micro + 10 GB pd-standard in a US free-tier zone (dev holds NO
-#     real personal data; prod runs the node in asia-south1). No external IP; Cloud NAT egress.
-#   - Cloud Run scale-to-zero, Firestore (default) free quota, Secret Manager ≤ 6 versions free,
-#     Cloud Scheduler 2 of 3 free jobs, Cloud Tasks / Logging within free tiers
-#   - Firestore without delete protection or backups; bucket force_destroy, 1-day retention
-# The KMS key ring/key come from infra/bootstrap (GCP key rings can't be deleted).
+# FREE BY DEFAULT. Everything that has a monthly cost is behind a switch that defaults to off
+# ("on hold") until the owner approves the cost:
+#   on hold  enable_cmek        Cloud KMS key (≈ $0.10/month)   → Google-managed encryption meanwhile
+#   on hold  entry_node_enabled e2-micro is free in us-central1, but its egress is not:
+#            entry_node_egress  "nat" (Cloud NAT ≈ $1/month) or "external_ip" (IPv4 billing Not verified)
+#   free     Cloud Run (scale to zero), Firestore (default) quota, Secret Manager ≤ 6 versions,
+#            Cloud Scheduler 2 of 3 free jobs, Cloud Tasks, Logging, budget, backup bucket in
+#            US-CENTRAL1 (5 GB free). Dev holds NO real personal data.
+# Any apply still needs an OPEN billing account linked to the project (free tiers require it).
 
 data "google_kms_crypto_key" "data" {
+  count = var.enable_cmek ? 1 : 0
+
   name     = "data"
   key_ring = "projects/${var.project_id}/locations/${var.region}/keyRings/${local.name_prefix}"
 }
 
 locals {
   name_prefix = "${var.project_name}-${var.env}" # weekend2-dev
+  kms_key_id  = var.enable_cmek ? data.google_kms_crypto_key.data[0].id : null
 }
 
 module "network" {
@@ -23,6 +28,7 @@ module "network" {
   name_prefix = local.name_prefix
   region      = var.node_region
   subnet_cidr = var.subnet_cidr
+  enable_nat  = var.entry_node_enabled && var.entry_node_egress == "nat"
 }
 
 module "secrets" {
@@ -30,7 +36,7 @@ module "secrets" {
 
   name_prefix = local.name_prefix
   region      = var.region
-  kms_key_id  = data.google_kms_crypto_key.data.id
+  kms_key_id  = local.kms_key_id
   secrets = {
     "tailscale/authkey"       = "Tailscale auth key for the dev entry node (one-off, tagged tag:weekend-dev, pre-approved)"
     "app/session-signing-key" = "HMAC key for passkey session cookies (dev)"
@@ -41,7 +47,7 @@ module "database" {
   source = "../../modules/database"
 
   location              = var.region
-  kms_key_id            = data.google_kms_crypto_key.data.id
+  kms_key_id            = local.kms_key_id
   delete_protection     = false
   pitr                  = false
   backup_retention_days = 0
@@ -52,7 +58,8 @@ module "backup" {
 
   project_id       = var.project_id
   region           = var.region
-  kms_key_id       = data.google_kms_crypto_key.data.id
+  location         = var.backup_location
+  kms_key_id       = local.kms_key_id
   retention_days   = 1
   soft_delete_days = 0
   force_destroy    = true
@@ -66,7 +73,7 @@ module "app" {
   image               = var.app_image
   firestore_database  = module.database.database_name
   backup_bucket_name  = module.backup.bucket_name
-  api_secret_ids      = [module.secrets.ids["app/session-signing-key"]]
+  api_secrets         = { session_signing_key = module.secrets.ids["app/session-signing-key"] }
   vertex_location     = var.vertex_location
   model_default       = var.model_default
   model_strong        = var.model_strong
@@ -94,8 +101,9 @@ module "entry_node" {
   subnet_id           = module.network.subnet_id
   node_tag            = module.network.node_tag
   machine_type        = var.entry_node_machine_type
-  disk_type           = "pd-standard"
-  disk_kms_key_id     = null # key is in asia-south1, node is in a US free-tier zone; no personal data in dev
+  disk_type           = "pd-standard" # 30 GB-month free with the always-free e2-micro
+  disk_kms_key_id     = null          # node is in a US free-tier zone; no personal data in dev
+  external_ip         = var.entry_node_egress == "external_ip"
   tailscale_secret_id = module.secrets.ids["tailscale/authkey"]
   api_service_name    = module.app.api_service_name
   api_region          = var.region

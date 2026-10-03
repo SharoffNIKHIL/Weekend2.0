@@ -9,9 +9,16 @@ variable "region" {
   type        = string
 }
 
-variable "kms_key_id" {
-  description = "CMEK key in the same location."
+variable "location" {
+  description = "Bucket location override (e.g. US-CENTRAL1 for the 5 GB always-free Standard storage in dev). null = var.region."
   type        = string
+  default     = null
+}
+
+variable "kms_key_id" {
+  description = "CMEK key in the bucket's location. null = Google-managed encryption."
+  type        = string
+  default     = null
 }
 
 variable "retention_days" {

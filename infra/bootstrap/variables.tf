@@ -49,3 +49,15 @@ variable "billing_account_id" {
   default     = null
   sensitive   = true
 }
+
+variable "enable_cmek" {
+  description = "Create the Cloud KMS key ring + key (P3 CMEK). Costs ≈ $0.06/key version/month + operations. Required for prod; on hold for free dev."
+  type        = bool
+  default     = false
+}
+
+variable "state_location" {
+  description = "State bucket location override. us-central1/us-east1/us-west1 get 5 GB Standard storage free. null = var.region."
+  type        = string
+  default     = null
+}

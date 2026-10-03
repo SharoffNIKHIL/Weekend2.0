@@ -25,10 +25,10 @@ variable "backup_bucket_name" {
   type        = string
 }
 
-variable "api_secret_ids" {
-  description = "Secret resource IDs the API may read (session signing key, connector credentials)."
-  type        = list(string)
-  default     = []
+variable "api_secrets" {
+  description = "Secrets the API may read: map of static name => secret resource ID (session signing key, connector credentials)."
+  type        = map(string)
+  default     = {}
 }
 
 variable "vertex_location" {

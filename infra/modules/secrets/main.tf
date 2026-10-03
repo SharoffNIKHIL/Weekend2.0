@@ -18,8 +18,11 @@ resource "google_secret_manager_secret" "this" {
       replicas {
         location = var.region
 
-        customer_managed_encryption {
-          kms_key_name = var.kms_key_id
+        dynamic "customer_managed_encryption" {
+          for_each = var.kms_key_id == null ? [] : [var.kms_key_id]
+          content {
+            kms_key_name = customer_managed_encryption.value
+          }
         }
       }
     }

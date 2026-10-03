@@ -6,14 +6,17 @@
 
 resource "google_storage_bucket" "this" {
   name                        = "${var.project_id}-backups"
-  location                    = var.region
+  location                    = coalesce(var.location, var.region)
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
   force_destroy               = var.force_destroy
 
-  encryption {
-    default_kms_key_name = var.kms_key_id
+  dynamic "encryption" {
+    for_each = var.kms_key_id == null ? [] : [var.kms_key_id]
+    content {
+      default_kms_key_name = encryption.value
+    }
   }
 
   retention_policy {

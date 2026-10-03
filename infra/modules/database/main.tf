@@ -1,7 +1,7 @@
 # infra/modules/database/main.tf
 # Firestore (Native mode), the (default) database so the free daily quota applies.
 # Serverless: no instance to pause, no idle charge. CMEK-encrypted (P3); vector search
-# indexes for memory retrieval are added in Phase 1. Daily backups with fixed retention (P10).
+# indexes for memory retrieval are added in Phase 1. CMEK is optional (KMS has a small monthly cost). Daily backups with fixed retention (P10).
 
 resource "google_firestore_database" "this" {
   name                              = "(default)"
@@ -13,8 +13,11 @@ resource "google_firestore_database" "this" {
   delete_protection_state           = var.delete_protection ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
   deletion_policy                   = var.delete_protection ? "ABANDON" : "DELETE"
 
-  cmek_config {
-    kms_key_name = var.kms_key_id
+  dynamic "cmek_config" {
+    for_each = var.kms_key_id == null ? [] : [var.kms_key_id]
+    content {
+      kms_key_name = cmek_config.value
+    }
   }
 }
 

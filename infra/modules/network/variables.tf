@@ -25,3 +25,9 @@ variable "node_tag" {
   type        = string
   default     = "entry-node"
 }
+
+variable "enable_nat" {
+  description = "Create Cloud Router + Cloud NAT for node egress (costs ≈ $0.0014/VM-hour + $0.045/GiB)."
+  type        = bool
+  default     = true
+}

@@ -84,3 +84,9 @@ variable "deletion_protection" {
   type        = bool
   default     = true
 }
+
+variable "external_ip" {
+  description = "Give the VM an ephemeral external IP for egress instead of Cloud NAT (in-use IPv4 is billed; free-tier treatment Not verified)."
+  type        = bool
+  default     = false
+}

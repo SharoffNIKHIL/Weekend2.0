@@ -18,6 +18,7 @@ module "network" {
   name_prefix = local.name_prefix
   region      = var.node_region
   subnet_cidr = var.subnet_cidr
+  enable_nat  = true
 }
 
 module "secrets" {
@@ -57,12 +58,15 @@ module "backup" {
 module "app" {
   source = "../../modules/app"
 
-  name_prefix         = local.name_prefix
-  region              = var.region
-  image               = var.app_image
-  firestore_database  = module.database.database_name
-  backup_bucket_name  = module.backup.bucket_name
-  api_secret_ids      = [module.secrets.ids["app/session-signing-key"], module.secrets.ids["connectors/google-oauth-client"]]
+  name_prefix        = local.name_prefix
+  region             = var.region
+  image              = var.app_image
+  firestore_database = module.database.database_name
+  backup_bucket_name = module.backup.bucket_name
+  api_secrets = {
+    session_signing_key = module.secrets.ids["app/session-signing-key"]
+    google_oauth_client = module.secrets.ids["connectors/google-oauth-client"]
+  }
   vertex_location     = var.vertex_location
   model_default       = var.model_default
   model_strong        = var.model_strong

@@ -5,8 +5,9 @@ variable "location" {
 }
 
 variable "kms_key_id" {
-  description = "CMEK key in the same location."
+  description = "CMEK key in the same location. null = Google-managed encryption (free; dev only — P3 needs CMEK in prod)."
   type        = string
+  default     = null
 }
 
 variable "delete_protection" {
