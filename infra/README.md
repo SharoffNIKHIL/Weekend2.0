@@ -11,6 +11,7 @@ Your phone and Mac reach a **t4g.nano entry node** over the Tailscale tailnet. T
 ```
 infra/
 ├── bootstrap/            # remote-state bucket (local state, run once)
+├── scripts/plan_env.py   # terraform plan → masked Markdown report for PRs (nothing applied)
 ├── envs/dev/             # dev root; its values (values.auto.tfvars) live on the `dev` branch
 ├── envs/prod/            # prod: wires the modules together
 └── modules/
@@ -128,9 +129,9 @@ aws secretsmanager put-secret-value --secret-id weekend2-dev/tailscale/authkey \
 openssl rand -base64 48 | tr -d '\n' > sk.txt && aws secretsmanager put-secret-value \
   --secret-id weekend2-dev/app/session-signing-key --secret-string file://sk.txt && rm -P sk.txt
 
-# 4. Everything else
-terraform plan -out="$HOME/.tfplans/weekend2-dev.tfplan"   # review every line
-terraform apply "$HOME/.tfplans/weekend2-dev.tfplan"
+# 4. Everything else: plan (writes ~/.tfplans/weekend2-dev.tfplan + a masked report for the PR), review, apply
+cd ../../.. && python3 infra/scripts/plan_env.py --env dev   # add --local-state to preview before bootstrap
+cd infra/envs/dev && terraform apply "$HOME/.tfplans/weekend2-dev.tfplan"
 ```
 
 ### Dev smoke tests
