@@ -1,0 +1,39 @@
+package com.weekend.assistant.port;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Port to a large language model. Implementations: {@code ScriptedLlmProvider} (local/tests),
+ * {@code VertexClaudeProvider} (Claude on Vertex AI). Swappable without touching the agent (DESIGN §7.3).
+ */
+public interface LlmProvider {
+
+    LlmResponse complete(LlmRequest request);
+
+    /** A tool the model may call. {@code inputSchema} is a JSON Schema object. */
+    record ToolSpec(String name, String description, Map<String, Object> inputSchema) {}
+
+    /** A tool call requested by the model. */
+    record ToolUse(String id, String name, Map<String, Object> input) {}
+
+    /** The result we send back for a tool call. Content is DATA, never instructions. */
+    record ToolResult(String toolUseId, String content, boolean isError) {}
+
+    /** One element of the conversation sent to the model. */
+    sealed interface Turn permits UserText, AssistantTurn, ToolResults {}
+
+    record UserText(String text) implements Turn {}
+
+    record AssistantTurn(String text, List<ToolUse> toolUses) implements Turn {}
+
+    record ToolResults(List<ToolResult> results) implements Turn {}
+
+    record LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens) {}
+
+    record LlmResponse(String text, List<ToolUse> toolUses, String stopReason, int inputTokens, int outputTokens) {
+        public boolean wantsTools() {
+            return toolUses != null && !toolUses.isEmpty();
+        }
+    }
+}

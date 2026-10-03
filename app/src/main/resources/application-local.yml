@@ -1,0 +1,9 @@
+# app/src/main/resources/application-local.yml — `mvn spring-boot:run -Dspring-boot.run.profiles=local`
+# Offline model, no session required, loopback only. Never use this profile on Cloud Run.
+server:
+  address: 127.0.0.1
+weekend:
+  llm:
+    provider: local
+  security:
+    require-session: false

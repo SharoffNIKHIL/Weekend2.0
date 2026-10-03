@@ -30,3 +30,6 @@ infra/modules/app/.build/
 ~$*
 # Private project memory (kept local, not public)
 PROJECT_MEMORY.md
+# Java build output
+app/target/
+*.class
