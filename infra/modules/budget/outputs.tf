@@ -1,5 +1,5 @@
 # infra/modules/budget/outputs.tf
 output "budget_name" {
-  description = "Budget name."
-  value       = aws_budgets_budget.monthly.name
+  description = "Budget display name."
+  value       = google_billing_budget.this.display_name
 }

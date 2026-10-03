@@ -1,0 +1,18 @@
+%% Weekend 2.0 - GCP network and access (DESIGN.md section 16.2, v0.2.0)
+flowchart LR
+  subgraph Project["GCP project - asia-south1"]
+    subgraph VPC["Custom VPC - no external IPs"]
+      node["Entry node e2-micro - Shielded VM, OS Login"]
+      nat["Cloud Router + Cloud NAT - egress only"]
+    end
+    run["Cloud Run api and worker - internal ingress, IAM invoker"]
+    google["Firestore, Secret Manager, KMS, GCS - Private Google Access"]
+  end
+  tsnet(("Tailnet"))
+  vertex["Claude on Vertex AI - global"]
+  admin(["Owner admin"])
+  node -->|"WireGuard via NAT"| tsnet
+  node -->|"ID token"| run
+  run --> google
+  run -->|"data exit X1"| vertex
+  admin -->|"IAP SSH tunnel"| node

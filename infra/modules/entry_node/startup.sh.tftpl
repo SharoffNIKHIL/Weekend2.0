@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# infra/modules/entry_node/startup.sh.tftpl — runs on EVERY boot (GCE startup script); idempotent.
+set -euo pipefail
+
+if ! command -v tailscale >/dev/null 2>&1; then
+  curl -fsSL https://tailscale.com/install.sh | sh
+fi
+systemctl enable --now tailscaled
+
+# Already joined? Nothing to do (the one-off auth key is only needed once).
+if tailscale status --json 2>/dev/null | grep -q '"BackendState": "Running"'; then
+  echo "tailscale already running"
+  exit 0
+fi
+
+# The auth key may be added after the VM is created: retry for ~20 minutes.
+AUTHKEY=""
+for attempt in $(seq 1 40); do
+  if AUTHKEY="$(gcloud secrets versions access latest --secret='${secret_id}' 2>/dev/null)" && [ -n "$AUTHKEY" ]; then
+    break
+  fi
+  echo "waiting for Tailscale auth key in Secret Manager (attempt $attempt/40)"
+  sleep 30
+done
+
+if [ -z "$AUTHKEY" ]; then
+  echo "ERROR: no Tailscale auth key in secret ${secret_id}. Add it, then reboot the VM." >&2
+  exit 1
+fi
+
+tailscale up --authkey="$AUTHKEY" --hostname="${hostname}" --advertise-tags="${tailscale_tag}"
+unset AUTHKEY

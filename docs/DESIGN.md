@@ -1,10 +1,10 @@
 # Weekend 2.0 — Personal AI Assistant: Design Document
 
-> **Doc version:** 0.1.3 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
-> **Last updated:** 2026-10-02 (IST) · **Applies to:** prices and versions checked on 2026-10-02
+> **Doc version:** 0.2.0 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
+> **Last updated:** 2026-10-03 (IST) · **Applies to:** prices and versions checked on 2026-10-02/03 · **Cloud:** Google Cloud (D4 decided 2026-10-03)
 > **Currency:** USD 1 = INR 96.3 (mid-market, 2026-10-02, [Trading Economics](https://tradingeconomics.com/india/currency)). All INR figures are rounded.
 
-Every recommendation in this version is **PROVISIONAL** until the owner decides it. Decisions are made in a fixed order: D1 → D2 → D4 → D5 → D6 → D3 (see §6).
+**D4 (cloud) is decided: Google Cloud** ([ADR-0001](adr/ADR-0001-d4-cloud-provider-gcp.md)). Every other recommendation is **PROVISIONAL** until the owner decides it. Decisions are made in a fixed order: D1 → D2 → D4 → D5 → D6 → D3 (see §6).
 
 ---
 
@@ -14,6 +14,7 @@ Newest first. Every change to this document adds a row here. Feature releases ha
 
 | Doc version | Date (IST) | Type | Summary | Sections changed |
 |---|---|---|---|---|
+| 0.2.0 | 2026-10-03 | Major | **D4 decided: Google Cloud** (AWS dropped). Architecture moved to Cloud Run + Firestore + Vertex AI + e2-micro tailnet node; new 🔓 exit (Claude via Vertex global endpoint); cost re-estimated (≈ ₹2,784/month prod incl. GST); Terraform rewritten for GCP. Earlier AWS content is superseded. | Header, 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 16–22, 24, App. A, C |
 | 0.1.3 | 2026-10-02 | Patch | Owner-exported FigJam diagrams added as images (docs/diagrams/: .jpg images, .svg exports, .mmd sources) | 5, 9, 16 |
 | 0.1.2 | 2026-10-02 | Patch | FigJam board with 5 architecture diagrams (system, text flow, voice flow, network, data model) | 5 |
 | 0.1.1 | 2026-10-02 | Patch | Owner set the budget: ₹5,000/month (Q-1 closed). Budget fit added to cost totals. | 3.1, 21.4, 21.5, 24 |
@@ -46,7 +47,7 @@ Newest first. Every change to this document adds a row here. Feature releases ha
 **In one sentence:** a private AI assistant, like a personal ChatGPT, that only Nikhil can use. It answers by text or voice from his phone or Mac, remembers what he tells it, and can read his email and calendar when he allows it. His data stays under his control and inside India wherever possible.
 
 **A day in the life (target experience)**
-- **07:30** — On the phone, Nikhil taps the Weekend app (an icon on the home screen) and says: *"What's on my calendar today, and did AWS send any billing alerts?"* Weekend turns his speech into text, checks the calendar and Gmail connectors, and answers out loud in about 3 seconds.
+- **07:30** — On the phone, Nikhil taps the Weekend app (an icon on the home screen) and says: *"What's on my calendar today, and did Google Cloud send any billing alerts?"* Weekend turns his speech into text, checks the calendar and Gmail connectors, and answers out loud in about 3 seconds.
 - **13:00** — He types: *"Remember that the staging DB password rotates on the 15th."* Weekend stores a **memory**. It stores the fact, not the password itself: secrets never go into memory.
 - **18:00** — He gets a notification: *"Reminder: staging DB rotation is in 2 days."*
 - **22:00** — On the Mac he asks: *"Summarise what I worked on this week."* Weekend searches its own memory and conversation history and writes a summary.
@@ -77,18 +78,22 @@ Think of Weekend as a small private office:
 | **Prompt caching** | Re-using an unchanged start of a prompt so it is billed at about 10% of the normal input price. | §21 |
 | **Tool calling / function calling** | The LLM asks *your code* to run a named function (such as `calendar.list_events`) and uses the result. | §7, §13 |
 | **Agent loop** | Repeat until done: the LLM thinks, calls tools, reads the results, then answers. | §7 |
-| **STT** (speech-to-text) | Turns audio into text, for example Whisper or Amazon Transcribe. | §8 |
-| **TTS** (text-to-speech) | Turns text into spoken audio, for example Kokoro or Amazon Polly. | §8 |
+| **STT** (speech-to-text) | Turns audio into text, for example Whisper or Google Cloud Speech-to-Text. | §8 |
+| **TTS** (text-to-speech) | Turns text into spoken audio, for example Kokoro or Google Cloud Text-to-Speech. | §8 |
 | **Embedding** | A list of numbers that represents the *meaning* of a text. Similar meanings give similar numbers. | §10 |
-| **Vector search / pgvector** | Finding stored texts whose embeddings are closest to the question's embedding. pgvector adds this to PostgreSQL. | §9, §10 |
+| **Vector search** | Finding stored texts whose embeddings are closest to the question's embedding. Firestore has built-in vector (KNN) search. | §9, §10 |
 | **RAG** (retrieval-augmented generation) | Search memory first, then give the best matches to the LLM so it answers with your facts. | §10 |
 | **Connector** | Code that reads from (or writes to) an outside service, such as Gmail, using OAuth. | §12 |
 | **OAuth scope** | The exact permission a connector asks for, for example "read calendar" but not "delete calendar". | §12 |
 | **Plugin / tool** | A capability the agent can use. In Weekend 2.0, tools are fixed, reviewed code. Nothing is downloaded at runtime. | §13 |
 | **Passkey (WebAuthn)** | Password-less login tied to your device and its Face ID or Touch ID. It can't be phished. | §14 |
 | **Tailnet / Tailscale** | A private WireGuard network between your own devices. The server has no public door. | §14, §16 |
+| **Cloud Run** | Google's serverless containers: runs only while handling a request, scales to zero. | §16, §17 |
+| **Firestore** | Google's serverless document database (Native mode), billed per operation with a free daily quota. | §9 |
+| **Vertex AI** | Google's AI platform; serves Claude and Gemini models. | §7 |
+| **Workload Identity Federation (WIF)** | Lets GitHub Actions call Google Cloud with short-lived tokens instead of stored keys. | §18 |
 | **PWA** (progressive web app) | A website you "Add to Home Screen" that behaves like an app, including notifications. | §15 |
-| **KMS / CMK** | Key Management Service / customer-managed key: the encryption key you control. | §9 |
+| **Cloud KMS / CMEK** | Key Management Service / customer-managed encryption key: the encryption key you control. | §9 |
 | **IaC / Terraform** | Infrastructure as code: cloud resources described in files and created repeatably. | §16 |
 | **DLT** (India) | TRAI's mandatory registry for anyone sending commercial SMS in India. | §11 |
 | **P1–P10** | The project's ten privacy rules (§4). | everywhere |
@@ -136,15 +141,15 @@ These are **assumptions to confirm** (Q-2). They drive every cost and server num
 | # | Rule | In plain words | How Weekend 2.0 meets it (planned) |
 |---|---|---|---|
 | P1 | Single-owner access | Only Nikhil's devices and face or finger can get in. | Tailnet (device layer) + passkey (person layer); no public port |
-| P2 | TLS 1.2+ everywhere | Everything travelling over a network is encrypted. | WireGuard on the tailnet + HTTPS; TLS to AWS APIs |
-| P3 | Encrypted storage | Data on disk is unreadable without your key. | EBS, S3 and backups encrypted with a customer-managed KMS key |
-| P4 | Secrets in a manager | No passwords or API keys in code or files. | AWS Secrets Manager; IAM role, no access keys |
+| P2 | TLS 1.2+ everywhere | Everything travelling over a network is encrypted. | WireGuard on the tailnet + HTTPS; TLS to Google APIs and Cloud Run |
+| P3 | Encrypted storage | Data on disk is unreadable without your key. | Firestore, Secret Manager, GCS backups and the VM disk encrypted with a customer-managed Cloud KMS key (CMEK) |
+| P4 | Secrets in a manager | No passwords or API keys in code or files. | Google Secret Manager; service-account identities, no JSON keys |
 | P5 | Keep only what's needed | Delete old data automatically. | Retention table (§9.4) with scheduled cleanup |
 | P6 | View, export, delete | You can see everything, download it, and wipe it. | `/export` and `/delete` endpoints plus a runbook, tested |
 | P7 | Flag data exits | Know every place data leaves your control. | 🔓 flags in every section and in §5.4 |
-| P8 | Tamper-resistant logs | A record of who did what, which can't be quietly edited. | Append-only audit table + S3 Object Lock copy |
-| P9 | Small attack surface | As few open doors as possible. | Zero inbound security-group rules; tailnet only |
-| P10 | Encrypted, tested backups | Backups exist and a restore has actually been tried. | Nightly encrypted dump to S3; quarterly restore drill |
+| P8 | Tamper-resistant logs | A record of who did what, which can't be quietly edited. | Append-only audit collection (hash chain) + copy in a GCS bucket with a retention policy |
+| P9 | Small attack surface | As few open doors as possible. | Cloud Run internal-only ingress; VM without external IP; only IAP-range SSH; tailnet only |
+| P10 | Encrypted, tested backups | Backups exist and a restore has actually been tried. | Firestore daily backups + nightly encrypted export to GCS; quarterly restore drill |
 
 ---
 
@@ -154,46 +159,45 @@ These are **assumptions to confirm** (Q-2). They drive every cost and server num
 
 > **Editable diagrams (FigJam):** https://www.figma.com/board/pMvZioGximavxDcsD14Ee9 — the Mermaid diagrams are the source of truth (also kept as `.mmd` files in `docs/diagrams/`); the `.jpg`/`.svg` images there are exports of the board. Re-export them when the board changes.
 
-> This shows the **PROVISIONAL reference design** (Option B in §17: a private server in AWS Mumbai, reached only over the tailnet). If the owner picks a different D1 option, these diagrams change. §17 shows the alternatives.
+> This shows the **reference design on Google Cloud** (D4 decided 2026-10-03; D1 shape **E2-GCP** in §17 is PROVISIONAL): serverless Cloud Run + Firestore in Mumbai, reached only through a tiny tailnet entry node. ⚠️ The `.jpg`/`.svg` images still show the old AWS design and are archived in `docs/diagrams/archive-aws/`; the Mermaid below is current. Re-export from FigJam after the board is updated.
 
 ### 5.1 Context: who talks to what
 ```mermaid
 flowchart LR
-  owner([Nikhil<br/>iPhone + Mac]) -- tailnet + passkey --> weekend[Weekend 2.0<br/>private server<br/>AWS ap-south-1]
-  weekend -- TLS, IAM role --> llm[LLM<br/>Claude on Amazon Bedrock<br/>India inference profile]
+  owner([Nikhil<br/>iPhone + Mac]) -- tailnet + passkey --> weekend[Weekend 2.0<br/>Google Cloud asia-south1<br/>entry node + Cloud Run]
+  weekend -- "TLS, service account (🔓 global endpoint)" --> llm[LLM<br/>Claude on Vertex AI]
   weekend -- OAuth, read-only --> google[Google<br/>Gmail / Calendar]
   weekend -- optional --> notion[Notion API]
   weekend -- encrypted push --> push[Apple / Google<br/>push services]
-  weekend -- encrypted backups --> s3[(S3 Mumbai<br/>Object Lock)]
+  weekend -- encrypted backups --> gcs[(GCS Mumbai<br/>retention policy, CMEK)]
 ```
 
-![System architecture](diagrams/01-system-architecture.jpg)
-
-### 5.2 Containers: what runs on the server
+### 5.2 Containers: what runs where
 ```mermaid
 flowchart TB
   subgraph Phone/Mac
     pwa[PWA app<br/>chat UI, mic, push]
   end
-  subgraph Server["Private server (EC2 t4g, ap-south-1, no inbound ports)"]
-    ts[tailscaled]
-    caddy[HTTPS reverse proxy]
-    api[FastAPI app<br/>auth, chat, voice, memory APIs]
-    agent[Agent core<br/>LLM loop + tool registry]
-    stt[STT worker]
-    tts[TTS worker]
-    sched[Scheduler<br/>reminders, cleanup, backups]
-    pg[(PostgreSQL + pgvector)]
+  subgraph GCP["Google Cloud project (asia-south1)"]
+    subgraph VPC["VPC: no external IPs, Cloud NAT egress"]
+      node[Entry node e2-micro<br/>tailscaled + HTTPS proxy<br/>adds ID token]
+    end
+    api[Cloud Run: api<br/>internal ingress, IAM invoke<br/>FastAPI: auth, chat, voice, memory, agent core]
+    worker[Cloud Run: worker<br/>retention, export, reminders]
+    fs[(Firestore Native<br/>CMEK, vector search)]
+    sm[(Secret Manager<br/>CMEK)]
+    gcs[(GCS backups)]
+    sched[Cloud Scheduler + Cloud Tasks]
   end
-  pwa -- WireGuard --> ts --> caddy --> api
-  api --> agent
-  api --> stt
-  api --> tts
-  agent --> pg
-  sched --> pg
-  agent -- tools --> conn[Connectors<br/>Gmail, Calendar, Notion]
-  agent -- Bedrock API --> llm[(Claude, India geo)]
-  api -- secrets --> sm[(AWS Secrets Manager)]
+  pwa -- WireGuard --> node -- ID token --> api
+  api --> fs
+  api -- secrets --> sm
+  api -- enqueue reminder --> sched
+  sched -- OIDC --> worker
+  worker --> fs
+  worker --> gcs
+  api -- tools --> conn[Connectors<br/>Gmail, Calendar, Notion]
+  api -- "Vertex AI (🔓 global)" --> llm[(Claude)]
 ```
 
 ### 5.3 How a request flows
@@ -203,10 +207,10 @@ flowchart TB
 sequenceDiagram
   participant P as PWA (phone)
   participant A as API (FastAPI)
-  participant M as Memory (Postgres)
-  participant L as LLM (Bedrock)
+  participant M as Memory (Firestore)
+  participant L as LLM (Vertex AI)
   participant T as Tool (e.g. Calendar)
-  P->>A: POST /chat (session cookie, over tailnet)
+  P->>A: POST /chat (session cookie, over tailnet via entry node)
   A->>A: verify passkey session + rate limit
   A->>M: fetch recent history + top-k memories
   A->>L: prompt (system + memories + history + message), stream
@@ -218,8 +222,6 @@ sequenceDiagram
   A-->>P: streamed answer (SSE)
   A->>M: save turn, extract new memories, write audit log
 ```
-
-![Text chat request flow](diagrams/02-text-chat-flow.jpg)
 
 **Voice message** (push-to-talk)
 ```mermaid
@@ -239,15 +241,13 @@ sequenceDiagram
   A-->>P: stream audio + text
 ```
 
-![Voice request flow](diagrams/03-voice-flow.jpg)
-
 **Latency budget for voice (target, p50):** upload 0.2 s + STT 0.6 s + first LLM sentence 1.2 s + first TTS chunk 0.4 s + network 0.2 s ≈ **2.6 s** until the first sound. These are design targets, measured in Phase 2. `Not verified`.
 
 ### 5.4 Data-exit map (P7)
 | # | Exit | Data | To | Default |
 |---|---|---|---|---|
-| X1 | LLM inference | Prompts, history, memories, tool results | AWS Bedrock, India geo profile (Mumbai/Hyderabad) | Needed. 🔓 flagged in §7 |
-| X2 | Hosted STT/TTS (if chosen) | Voice audio, spoken text | AWS Transcribe/Polly Mumbai, or none if local | Decided in Phase 2 (§8) |
+| X1 | LLM inference | Prompts, history, memories, tool results | Google Vertex AI, Claude **global** endpoint (may be processed outside India) | Needed. 🔓 flagged in §7; in-India alternative = Gemini in asia-south1 (D2) |
+| X2 | Hosted STT/TTS (if chosen) | Voice audio, spoken text | Google Cloud Speech-to-Text / Text-to-Speech, or none if local | Decided in Phase 2 (§8) |
 | X3 | Push notifications | Encrypted payload + metadata | Apple APNs / Google FCM | Content-free notifications by default (§11) |
 | X4 | Tailscale coordination | Device keys, device names, IPs (not traffic) | Tailscale Inc. (or self-hosted Headscale) | 🔓 flagged in §14 |
 | X5 | Connectors | Queries to Google/Notion | Google, Notion | Read-only, approved one by one |
@@ -263,10 +263,10 @@ sequenceDiagram
 
 | ID | Decision | Options | PROVISIONAL recommendation | Status | Details |
 |---|---|---|---|---|---|
-| D1 | Hosting | Serverless · Private server (cloud) · Local (Mac at home) · Hybrid | **Private server in AWS ap-south-1, tailnet-only** | Open | §17 |
-| D2 | AI model | Claude via Bedrock India · Claude API (global) · Gemini · open-weights local | **Claude Haiku 4.5 (default) + Sonnet 5 (hard tasks) via Bedrock `in.` profiles** | Open — depends on D1 | §7 |
-| D4 | Cloud provider | AWS · GCP · none | **AWS** (Bedrock India inference + owner's expertise) | Open — depends on D1, D2 | §16 |
-| D5 | Storage / hardware | Postgres on server · RDS · DynamoDB · local disk | **PostgreSQL 17 + pgvector on the server's encrypted EBS; S3 for backups** | Open — depends on D1, D4 | §9 |
+| D1 | Hosting | Serverless + tailnet entry node (E2-GCP) · Private VM · Local Mac · Hybrid | **E2-GCP: Cloud Run + Firestore + e2-micro tailnet entry node, asia-south1** | Open (PROVISIONAL) | §17 |
+| D2 | AI model | Claude on Vertex AI (global) · Gemini on Vertex AI (asia-south1) · Claude API · open-weights local | **Claude Haiku 4.5 (default) + Sonnet 5 (hard tasks) on Vertex AI, global endpoint** (🔓 leaves India; Gemini in Mumbai is the in-India option) | Open — depends on D1 | §7 |
+| D4 | Cloud provider | AWS · GCP · none | **Google Cloud** — ~~AWS~~ SUPERSEDED (by owner decision 2026-10-03, [ADR-0001](adr/ADR-0001-d4-cloud-provider-gcp.md)) | **Decided 2026-10-03** | §16 |
+| D5 | Storage / hardware | Firestore · Cloud SQL Postgres · Postgres on a VM · local disk | **Firestore (Native, `(default)`, CMEK) in asia-south1; GCS for backups** — ~~PostgreSQL on EBS~~ SUPERSEDED (by D4 = GCP) | Open — depends on D1 | §9 |
 | D6 | Authentication | Passkey · passkey + tailnet · OIDC (Google) · mTLS | **Tailnet (device) + passkey (person)**, recovery codes offline | Open — depends on D1 | §14 |
 | D3 | Mobile interface | PWA · native app · messaging bridge (Telegram/WhatsApp) · voice-only | **PWA** | Open — decided last | §15 |
 
@@ -291,21 +291,23 @@ The chat assistant is the "brain plus manager". It takes your message, gathers t
 5. **Stream** the answer to the app with Server-Sent Events.
 6. **After the turn:** save it, extract candidate memories (§10), write an audit entry (§19).
 
-**Tech (PROVISIONAL):** Python 3.12, FastAPI, the official `anthropic` SDK's Bedrock client (`AnthropicBedrock`), Pydantic v2, SQLAlchemy 2.x. Pinned versions go into `requirements.txt` in Phase 1.
+**Tech (PROVISIONAL):** Python 3.12, FastAPI on Cloud Run, the official `anthropic` SDK's Vertex client (`AnthropicVertex`, install `anthropic[vertex]`), Pydantic v2, `google-cloud-firestore`. Pinned versions go into `requirements.txt` in Phase 1.
 
 ### 7.3 Model options (D2)
 Prices are per million tokens (input / output), checked 2026-10-02 on [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing).
 
 | Option | Model(s) | Price USD | Data location | Pros | Cons | P7 |
 |---|---|---|---|---|---|---|
-| **A. Claude on Bedrock, India geo profile** | Haiku 4.5, Sonnet 5, Opus 5 (`in.anthropic.*`) | Haiku $1/$5 · Sonnet 5 $2/$10 · Opus 5 $5/$25, **+10% regional premium** | Processed in ap-south-1/ap-south-2; not stored ([AWS blog, 2026-09-29](https://aws.amazon.com/blogs/machine-learning/amazon-bedrock-expands-claude-model-availability-to-india-cross-region-inference/)) | Data stays in India; IAM role, no API key (P4); one AWS bill | Newest models (Sonnet 5.5, Opus 5.5) are not in the India profile yet | 🔓 to AWS (India) |
+| ~~A. Claude on Bedrock, India geo profile~~ (SUPERSEDED by D4 = GCP, 2026-10-03) | Haiku 4.5, Sonnet 5, Opus 5 (`in.anthropic.*`) | Haiku $1/$5 · Sonnet 5 $2/$10 · Opus 5 $5/$25, **+10% regional premium** | Processed in ap-south-1/ap-south-2; not stored ([AWS blog, 2026-09-29](https://aws.amazon.com/blogs/machine-learning/amazon-bedrock-expands-claude-model-availability-to-india-cross-region-inference/)) | Data stays in India; IAM role, no API key (P4); one AWS bill | Newest models (Sonnet 5.5, Opus 5.5) are not in the India profile yet | 🔓 to AWS (India) |
+| **A2. Claude on Vertex AI (global endpoint)** | Haiku 4.5 `claude-haiku-4-5@20251001`, Sonnet 5 `claude-sonnet-5`, Opus 5.5 `claude-opus-5-5` | Same list prices as Anthropic; **no premium on the global endpoint** (regional/multi-region +10%) | Dynamic global routing; **no India region** for current Claude models (US/EU multi-region or global only) ([Anthropic, 2026-10-03](https://platform.claude.com/docs/en/build-with-claude/claude-on-vertex-ai)) | Newest models; service-account auth, no API key (P4); one Google bill | Data may leave India | 🔓 to Google (global) |
+| **A3. Gemini on Vertex AI, asia-south1** | Gemini Flash / Pro | See §7.3 option C | Processed in Mumbai (`Not verified` per model) | Keeps prompts in India; cheapest | Different model family; re-test prompts and tools | 🔓 to Google (India) |
 | B. Claude API (Anthropic, global) | Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 4.5 $1/$5 | Standard | Global routing (US-only option at 1.1×; no India option) | Newest models first; prompt caching | Data leaves India; API key to manage | 🔓 to Anthropic (global) |
-| C. Gemini API | 2.5 Flash-Lite $0.10/$0.40 · 2.5 Flash $0.30/$2.50 · 3.1 Pro $2/$12 ([third-party summary](https://benchlm.ai/google/api-pricing), `Not verified` on Google's page) | Cheapest | Vertex regional options — `Not verified` for asia-south1 | Very cheap | Second cloud vendor; check data-use terms | 🔓 to Google |
+| C. Gemini API | 2.5 Flash-Lite $0.10/$0.40 · 2.5 Flash $0.30/$2.50 · 3.1 Pro $2/$12 ([third-party summary](https://benchlm.ai/google/api-pricing), `Not verified` on Google's page) | Cheapest | Vertex regional options — `Not verified` for asia-south1 | Very cheap; same Google bill | Different model family; check data-use terms | 🔓 to Google |
 | D. Open-weights, local | e.g. Qwen3 14B, Gemma 4 26B A4B (Apache 2.0, per [HF blog](https://huggingface.co/blog/daya-shankar/open-source-llm-models-to-run-locally)) via Ollama | $0 per token | Your hardware | Maximum privacy | Weaker than frontier models; needs a 24–32 GB Mac or a GPU; hardware disclosure (§17.3) | None |
 
-**PROVISIONAL recommendation:** Option A. Haiku 4.5 handles about 80% of turns, Sonnet 5 about 20%, and Opus 5 only on explicit request. Keep the LLM client behind an interface (`LLMProvider`) so B or D can be swapped in later.
+**PROVISIONAL recommendation (updated 2026-10-03, D4 = GCP):** Option **A2**. Haiku 4.5 handles about 80% of turns, Sonnet 5 about 20%, and Opus only on explicit request. If keeping prompts in India matters more than model choice, pick **A3 (Gemini in asia-south1)**; the model location is one Terraform variable (`vertex_location`). Keep the LLM client behind an interface (`LLMProvider`) so B or D can be swapped in later.
 
-**Price conflict to resolve:** Anthropic states Sonnet 5's $2/$10 is now standard on the Claude API. A third-party source says Bedrock's Sonnet 5 rose to $3/$15 after 2026-08-31 ([CloudZero](https://www.cloudzero.com/blog/amazon-bedrock-pricing/)). Bedrock sets its own prices, so **check [aws.amazon.com/bedrock/pricing](https://aws.amazon.com/bedrock/pricing/) before deciding D2.** `Not verified`.
+**Price check:** Vertex AI lists Claude at Anthropic's prices on the global endpoint. Confirm Sonnet 5 on [Vertex AI generative AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing) before deciding D2. `Not verified` for Sonnet 5 specifically. (The earlier Bedrock price conflict no longer applies.)
 
 **Tokenizer note:** Claude 4.7 and later models use a tokenizer that produces about 30% more tokens for the same text (Anthropic pricing page). The cost model in §21 adds this for Sonnet 5.
 
@@ -314,17 +316,17 @@ Prices are per million tokens (input / output), checked 2026-10-02 on [Anthropic
 - Retention: conversations 365 days by default (owner-configurable); token and cost metrics 2 years.
 - 🔓 **DATA LEAVES OWNER CONTROL**
   - **What:** prompts (message, retrieved memories, recent history, tool results)
-  - **To:** AWS Bedrock, India geographic cross-region inference (ap-south-1 / ap-south-2)
+  - **To:** Google Vertex AI, Claude **global** endpoint (any Google region with capacity; not limited to India)
   - **Why:** LLM inference
-  - **Policy:** AWS states customer data is not stored in the destination Region for cross-Region inference ([AWS blog](https://aws.amazon.com/blogs/machine-learning/amazon-bedrock-expands-claude-model-availability-to-india-cross-region-inference/)). Bedrock's model-training policy: `Not verified` — check the Bedrock data-protection docs.
-  - **Alternative:** open-weights model running locally (Option D)
+  - **Policy:** data handling is governed by Google Cloud ([Vertex AI data governance / zero data retention](https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance)); request-response logging is off unless enabled. Training-use and retention specifics: `Not verified` — read that page before D2.
+  - **Alternative:** Gemini on Vertex AI in asia-south1 (A3), or an open-weights model running locally (Option D)
 
 ### 7.5 Security
 - Prompt-injection defence: tool results and connector content are wrapped as *data*, never as instructions. Write-tools always require confirmation.
 - Output limits: maximum tokens per turn, maximum tool steps, daily cost cap (stop and notify when exceeded).
 
 ### 7.6 Cost
-See §21. Expected about **USD 16 / ₹1,530 per month** for the LLM.
+See §21. Expected about **USD 14.5 / ₹1,390 per month** for the LLM (Vertex global endpoint, no regional premium).
 
 ### 7.7 Open questions
 Q-3: languages: English only, or Hindi/Hinglish too? This affects model and STT choice.
@@ -333,6 +335,7 @@ Q-3: languages: English only, or Hindi/Hinglish too? This affects model and STT 
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-02 | Initial design |
+| 0.2.0 | 2026-10-03 | D4 = GCP: Claude via Vertex AI (global endpoint, 🔓); Gemini in asia-south1 added as the in-India option |
 
 ---
 
@@ -352,26 +355,26 @@ Q-3: languages: English only, or Hindi/Hinglish too? This affects model and STT 
 ### 8.3 Options
 | Option | STT | TTS | Cost at 900 min/month | Data location | Licence | Notes |
 |---|---|---|---|---|---|---|
-| **A. Local on the server** | faster-whisper (CTranslate2 Whisper; Whisper is MIT) | Kokoro 82M (Apache 2.0) | $0 per minute; needs more CPU/RAM (t4g.large instead of medium: +~$16/month) | Your server | MIT / Apache 2.0 | Most private; CPU latency `Not verified`, benchmark in Phase 2 |
-| **B. AWS managed, Mumbai** | Amazon Transcribe ($0.024/min, **15 s minimum per request**) | Amazon Polly Neural ($16 per 1M characters) | ≈ $21.6 + ≈ $10 = **~$32 (₹3,080)** ([Transcribe](https://costgoat.com/pricing/amazon-transcribe), [Polly](https://texttolab.com/blog/amazon-polly-pricing); regional uplift `Not verified`) | AWS Mumbai | Service terms | Simple; the 15 s minimum makes short commands expensive |
-| C. Google Cloud | Chirp 3 (~$0.016/min) | Cloud TTS | ≈ $15 + TTS | Google (region `Not verified`) | Service terms | Second cloud vendor |
+| **A. Local (in our own container)** | faster-whisper (CTranslate2 Whisper; Whisper is MIT) | Kokoro 82M (Apache 2.0) | $0 per minute; needs 2–4 GiB RAM and CPU on Cloud Run (or a larger VM); cost `Not verified`, benchmark in Phase 2 | Your project (asia-south1) | MIT / Apache 2.0 | Most private; CPU latency `Not verified` |
+| **B. Google Cloud managed** | Speech-to-Text v2, Chirp 3 (~$0.016/min) | Cloud Text-to-Speech (Neural2/Chirp HD voices) | ≈ $14.4 + ≈ $10 = **~$24 (₹2,330)** — `Not verified` | Google; asia-south1 availability per model `Not verified` | Service terms | Same cloud and bill; no extra vendor |
 | D. ElevenLabs (evaluation only) | — | Premium voices | Credits | Vendor (`Not verified`) | Vendor terms | Phase 2 trial only, with approval per call |
 
 **Other notes**
 - **STT state of the art (2026):** Qwen3-ASR (multilingual), NVIDIA Parakeet TDT (English streaming), Whisper large-v3-turbo (809M parameters, close to large-v3 accuracy) ([Northflank](https://northflank.com/blog/best-open-source-speech-to-text-stt-model-in-2026-benchmarks), [SevenLabs](https://www.sevenlabs.site/blogs/best-open-source-speech-to-text-models-2026)). Whisper handles Indian-accented English and Hindi reasonably well; prompting with names and terms improves accuracy.
 - ⚖️ **LICENCE:** **Piper TTS** moved to `OHF-Voice/piper1-gpl` under **GPL-3.0** (the old MIT repository was archived on 2025-10-06) ([source](https://www.cekura.ai/discover/piper-tts)). Prefer **Kokoro (Apache 2.0)**. Avoid Coqui XTTS (CPML, non-commercial).
 
-**PROVISIONAL recommendation:** start Phase 2 with **A (local)**. Benchmark latency on the chosen server. If p50 is over 3 s, use **B for STT only** and keep TTS local.
+**PROVISIONAL recommendation:** start Phase 2 with **A (local)**. Benchmark latency on Cloud Run. If p50 is over 3 s, use **B for STT only** and keep TTS local.
 
 ### 8.4 Data held, retention, exits
 - Raw audio: **not stored** by default (deleted after transcription). An optional debug flag keeps it for 24 h.
 - Transcripts are stored as normal chat turns (§7.4).
-- Option B/C → 🔓 flag (voice audio to AWS or Google).
+- Option B → 🔓 flag (voice audio to Google Cloud Speech services).
 
 ### 8.5 Change history
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-02 | Initial design |
+| 0.2.0 | 2026-10-03 | D4 = GCP: AWS voice option replaced by Google Cloud Speech-to-Text / Text-to-Speech |
 
 ---
 
@@ -380,35 +383,33 @@ Q-3: languages: English only, or Hindi/Hinglish too? This affects model and STT 
 **Status:** ⚪ Design · **Phase:** 1 and 3 · **Decision:** D5
 
 ### 9.1 Plain-English summary
-One database, PostgreSQL, holds everything structured. The **pgvector** extension lets the same database run "meaning search" for memories. Files (backups, exports) go to S3. Everything is encrypted with a key you control.
+One serverless database, **Firestore (Native mode)** in Mumbai, holds everything structured. Its built-in **vector search** runs "meaning search" for memories. Files (backups, exports) go to a **GCS** bucket. Everything is encrypted with a key you control (CMEK). There is no server to patch and no charge while idle.
 
 ### 9.2 Options
-| Option | Monthly cost (ap-south-1) | Pros | Cons |
+| Option | Monthly cost (asia-south1) | Pros | Cons |
 |---|---|---|---|
-| **A. PostgreSQL 17 + pgvector on the server's EBS volume** | Included in the server; EBS gp3 40 GB ≈ $3.6 (`Not verified` Mumbai rate) | Cheapest; one box; full control | You run backups and upgrades (Ansible) |
-| B. Amazon RDS PostgreSQL db.t4g.micro | ≈ $15–28 + storage (sources conflict: [Bytebase](https://www.bytebase.com/dbcost/rds-pricing/), [Economize](https://www.economize.cloud/resources/aws/pricing/rds/db.t4g.micro/)) | Managed backups and patching | More cost for one user; another network hop |
-| C. DynamoDB + a separate vector store | Cents | Serverless | No SQL joins; vector search needs another service |
+| **A. Firestore Native, `(default)` database, CMEK** | ≈ $0 within the free daily quota (1 GiB stored, 50,000 reads/day); backups ≈ cents | Serverless, scales to zero, vector search built in, no patching | Document model (no SQL joins); export/import for backups |
+| B. Cloud SQL for PostgreSQL + pgvector | Smallest shared-core instance runs 24/7 (≈ $10+/month, `Not verified`) + storage | Familiar SQL + pgvector | Always-on cost; patch windows |
+| C. PostgreSQL on a VM disk | Bigger VM than e2-micro needed (`Not verified`) | Full control | You run backups and upgrades |
 | D. SQLite + sqlite-vec on a local Mac | $0 | Simplest local option | Only fits D1 = local |
 
-**pgvector:** latest v0.8.6, published 2026-07-29 ([PyPI/GitHub release tracker](https://releasealert.dev/github/pgvector/pgvector)). Pin it in Phase 1.
-
-**PROVISIONAL recommendation:** A. Revisit B if backups or patching become a burden.
+**PROVISIONAL recommendation (updated 2026-10-03, D4 = GCP):** A. ~~PostgreSQL 17 + pgvector on EBS~~ SUPERSEDED. Revisit B if relational queries become painful.
 
 ### 9.3 Data model (first draft)
-| Table | Purpose | Key columns |
+Firestore stores these as **collections** (the names below); fields as listed. The single-owner rule is enforced in the app and by IAM.
+
+| Collection | Purpose | Key fields |
 |---|---|---|
 | `owner` | The single owner record (exactly one row, enforced) | id, display_name, created_at |
 | `passkey_credential` | Registered passkeys (public keys only) | id, credential_id, public_key, sign_count, device_label, created_at, last_used_at |
 | `session` | Login sessions | id, credential_id, created_at, expires_at, revoked |
 | `conversation` | A chat thread | id, title, created_at, archived |
 | `message` | One turn | id, conversation_id, role, content, model, tokens_in, tokens_out, cost_usd, created_at |
-| `memory` | A remembered fact | id, text, kind (fact/preference/task), source_message_id, embedding vector(N), created_at, expires_at, pinned |
+| `memory` | A remembered fact | id, text, kind (fact/preference/task), source_message_id, embedding (Firestore vector), created_at, expires_at, pinned |
 | `reminder` | Scheduled notification | id, text, due_at, recurrence (RRULE), status |
-| `connector_account` | Connected services (no tokens here) | id, provider, scopes, secret_ref (Secrets Manager ARN placeholder), status |
+| `connector_account` | Connected services (no tokens here) | id, provider, scopes, secret_ref (Secret Manager secret ID placeholder), status |
 | `tool_call` | Tool usage log | id, message_id, tool, args_redacted, result_size, confirmed_by_owner, created_at |
 | `audit_log` | Append-only security log (§19) | id, ts, actor, action, target, hash_prev, hash_self |
-
-![Data model](diagrams/05-data-model.jpg)
 
 ### 9.4 Retention (P5)
 | Data | Default retention | Deletion |
@@ -417,18 +418,19 @@ One database, PostgreSQL, holds everything structured. The **pgvector** extensio
 | Memories | Until deleted (pinned) or 180 days if unpinned and unused | Nightly job |
 | Raw audio | 0 (not stored) | — |
 | Tool-call logs | 90 days | Nightly job |
-| Audit log | 2 years (immutable copy in S3 Object Lock) | Expires by lifecycle rule |
-| Backups | 35 daily + 12 monthly | S3 lifecycle |
+| Audit log | 2 years (copy in GCS under a retention policy) | Expires by lifecycle rule |
+| Backups | Firestore daily backups 7 days; GCS exports 35 daily + 12 monthly | Backup schedule + GCS lifecycle |
 
 ### 9.5 Encryption (P3)
-- EBS volume and snapshots: KMS customer-managed key `alias/weekend-data`.
-- S3 backups: SSE-KMS with the same key family; bucket blocks public access; Object Lock (governance mode) for audit copies.
-- Column-level: not needed in v1, because the disk is encrypted and the server is single-tenant. Revisit in the Phase 4 threat model.
+- Firestore, Secret Manager, the GCS backup bucket and the prod VM disk: Cloud KMS key `weekend2-<env>/data` (CMEK, yearly rotation). The key ring lives in the bootstrap stack because GCP key rings can't be deleted.
+- GCS: uniform bucket-level access, public access prevention enforced, retention policy (not locked) for exports and audit copies.
+- Field-level: not needed in v1, because storage is CMEK-encrypted and single-tenant. Revisit in the Phase 4 threat model.
 
 ### 9.6 Change history
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-02 | Initial design |
+| 0.2.0 | 2026-10-03 | D4 = GCP: Firestore (CMEK, vector search) replaces PostgreSQL + pgvector; GCS replaces S3 |
 
 ---
 
@@ -441,8 +443,8 @@ This is how Weekend "remembers" and "looks things up". When you say something wo
 
 ### 10.2 How it works
 1. **Write path:** after each turn, a cheap LLM call (Haiku) proposes 0–3 memories: "Owner's staging DB rotates on the 15th". Memories are shown in the app; the owner can edit, pin or delete them. Secrets are filtered out by regex and an LLM check before saving.
-2. **Embedding:** each memory is turned into a vector by a **local embedding model** on the server, so no data leaves. The model choice is made in Phase 3 (candidates: small BGE or E5 models; licence check required, `Not verified`).
-3. **Read path (hybrid search):** pgvector similarity (HNSW index) + PostgreSQL full-text search, merged by rank. Top 8 go into the prompt.
+2. **Embedding:** each memory is turned into a vector by a **local embedding model inside our own Cloud Run container**, so no data leaves the project. The model choice is made in Phase 3 (candidates: small BGE or E5 models; licence check required, `Not verified`).
+3. **Read path:** Firestore vector (KNN) search on `memory.embedding`, plus a keyword filter, merged by rank. Top 8 go into the prompt.
 4. **Owner queries:** "What do you know about X?", "Forget everything about Y", "Export my data". These map to tools `memory.search`, `memory.delete`, `data.export`.
 
 ### 10.3 Data exits
@@ -495,7 +497,7 @@ You want Weekend to *reach you*, with reminders and alerts. SMS looks like the o
 **Status:** ⚪ Design · **Phase:** 3+ (one connector per release)
 
 ### 12.1 Plain-English summary
-Connectors let Weekend read your other services. Each one is added on its own, starts **read-only**, asks for the smallest permission, and keeps its token in Secrets Manager.
+Connectors let Weekend read your other services. Each one is added on its own, starts **read-only**, asks for the smallest permission, and keeps its token in Secret Manager.
 
 ### 12.2 Planned connectors (backlog, in suggested order)
 | # | Connector | First capability | Scope (minimum) | Auth | Risks / notes |
@@ -503,8 +505,8 @@ Connectors let Weekend read your other services. Each one is added on its own, s
 | C1 | Google Calendar | List today's and upcoming events | `calendar.readonly` | OAuth (desktop/installed app) | See the 7-day token issue below |
 | C2 | Gmail | Search and read billing/alert emails | `gmail.readonly` (**restricted scope**) | OAuth | 7-day token issue + restricted-scope verification |
 | C3 | Notion | Read pages you share with the integration | Internal integration, page-level sharing | Integration token | 🔓 Notion; no expiry, so rotate manually |
-| C4 | GitHub | Read issues/PRs of your repos | Fine-grained PAT, read-only, chosen repos | PAT in Secrets Manager | — |
-| C5 | AWS (own account) | Cost and billing summary | IAM role with `ce:Get*` read only | Instance role | No keys |
+| C4 | GitHub | Read issues/PRs of your repos | Fine-grained PAT, read-only, chosen repos | PAT in Secret Manager | — |
+| C5 | Google Cloud (own project) | Cost and budget summary | Billing Viewer on the billing account, read only | Service account | No keys |
 | C6+ | TBD | — | — | — | Add via the §23 template |
 
 ### 12.3 Important finding: Google OAuth "Testing" tokens expire every 7 days
@@ -547,7 +549,7 @@ class ToolSpec:
     input_schema: dict        # JSON Schema
     writes: bool              # True → owner confirmation required
     network: list[str]        # allowed hosts, e.g. ["www.googleapis.com"]
-    secrets: list[str]        # Secrets Manager names it may read
+    secrets: list[str]        # Secret Manager secret IDs it may read
     timeout_s: int = 15
 ```
 
@@ -579,10 +581,10 @@ The Model Context Protocol (MCP) can plug external tool servers into an agent. E
 Two locks. **Lock 1 (device):** the server is only reachable from devices on your private tailnet, so it can't be found from the internet. **Lock 2 (person):** the app asks for your passkey (Face ID or Touch ID). Both must pass.
 
 ### 14.2 Design
-- **Network:** Tailscale on the server and your devices. A Tailscale ACL allows only `owner@` devices to reach `tag:weekend:443`. The security group has **zero inbound rules**.
+- **Network:** Tailscale on the entry node and your devices. A Tailscale grant allows only the owner's devices to reach `tag:weekend:443` (`infra/tailscale/policy.hujson`). The VM has **no external IP**; the API has **internal-only ingress** and accepts only the node's ID token.
 - **App:** WebAuthn passkeys, server-side with Duo's `webauthn` Python library ([duo-labs/py_webauthn](https://github.com/duo-labs/py_webauthn)). ⚠️ Install the package named `webauthn` (Duo), **not** the unrelated `py-webauthn` on PyPI. Version pinned in Phase 2 (`Not verified`).
 - **Sessions:** HttpOnly, Secure, SameSite=Strict cookie; 12 h idle timeout, 7 days maximum; revoke from the app.
-- **Registration lock:** passkey registration is only allowed with a one-time bootstrap code printed on the server console (via SSM). There's no public sign-up.
+- **Registration lock:** passkey registration is only allowed with a one-time bootstrap code stored in Secret Manager and read by the owner with `gcloud`. There's no public sign-up.
 - **Recovery:** 2 passkeys (iPhone + Mac) plus 10 one-time recovery codes printed and stored offline. Phone-loss runbook: remove the device from the tailnet, revoke its passkey, rotate sessions.
 
 ### 14.3 Options considered
@@ -607,6 +609,7 @@ Two locks. **Lock 1 (device):** the server is only reachable from devices on you
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-02 | Initial design |
+| 0.2.0 | 2026-10-03 | D4 = GCP: Cloud Run internal ingress + entry node without external IP; bootstrap code via Secret Manager |
 
 ---
 
@@ -631,86 +634,82 @@ Two locks. **Lock 1 (device):** the server is only reachable from devices on you
 
 ## 16. Infrastructure (D4)
 
-**Status:** ⚪ Design · **Phase:** 5 (written early, applied with Phase 1)
+**Status:** 🟡 Terraform drafted and validated (not applied) · **Phase:** 5 (written early, applied with Phase 1)
 
-### 16.1 Cloud choice (PROVISIONAL: AWS)
-- **AWS ap-south-1 (Mumbai)**, with ap-south-2 (Hyderabad) as part of the Bedrock India profile.
-- Why AWS: Claude can be served with India data residency through Bedrock `in.` profiles (2026-09-29); the owner is an AWS expert; one bill.
-- GCP alternative: Cloud Run asia-south1 + Vertex AI. The Cloud Run free tier and region tier for asia-south1 are `Not verified` (sources conflict).
+### 16.1 Cloud choice: **Google Cloud (decided 2026-10-03)**
+- **asia-south1 (Mumbai)** for everything that stores data. ~~AWS ap-south-1~~ SUPERSEDED (by owner decision 2026-10-03, [ADR-0001](adr/ADR-0001-d4-cloud-provider-gcp.md)).
+- Why GCP: the owner's choice and existing account; Cloud Run and Firestore scale to zero with free tiers; keyless CI with Workload Identity Federation; prod estimate about 56% of the budget.
+- Trade-off: current Claude models on Vertex AI have no India region (🔓 X1). Gemini in asia-south1 is the in-India option (D2).
+- One project per environment: `weekend2-dev-<suffix>` and `weekend2-prod-<suffix>`.
 
 ### 16.2 Network design
 ```mermaid
 flowchart LR
-  subgraph VPC["VPC 10.20.0.0/16 (ap-south-1)"]
-    subgraph PUB["Public subnet (egress only)"]
-      ec2["EC2 t4g.medium<br/>SG: inbound NONE<br/>outbound 443/tcp, 41641/udp"]
+  subgraph Project["GCP project (asia-south1)"]
+    subgraph VPC["Custom VPC — no external IPs"]
+      node["Entry node e2-micro<br/>Shielded VM, OS Login<br/>firewall: SSH from IAP range only"]
+      nat["Cloud Router + Cloud NAT<br/>(egress only)"]
     end
-    s3ep["S3 gateway endpoint (free)"]
+    run["Cloud Run api / worker<br/>ingress: internal only<br/>invoker: IAM"]
+    google["Firestore · Secret Manager · KMS · GCS<br/>(Private Google Access)"]
   end
-  ec2 -- WireGuard --> tsnet((Tailnet))
-  ec2 --> s3ep --> s3[(S3 backups)]
-  ec2 -- HTTPS --> aws[Bedrock / Secrets Manager / KMS / SSM]
+  node -- WireGuard via NAT --> tsnet((Tailnet))
+  node -- "ID token" --> run
+  run --> google
+  run -- "🔓 Vertex AI global" --> vertex[Claude]
+  admin([Owner]) -- "gcloud compute ssh --tunnel-through-iap" --> node
 ```
-![AWS network and access](diagrams/04-aws-network.jpg)
 
-- No NAT gateway. It would add roughly $30+ a month (`Not verified` Mumbai price) for no benefit to one server. The instance sits in a public subnet with a public IPv4 used **only for outbound traffic**, and its security group allows **no inbound traffic**. Public IPv4 costs about $3.65/month at $0.005/h (`Not verified` for Mumbai).
-- Admin access: **SSM Session Manager** only. No SSH key and no port 22.
-- Free S3 gateway endpoint for backup traffic. Interface endpoints (~$7+/month each, `Not verified`) are skipped for cost.
+- **No external IPs anywhere.** The node reaches the internet (Tailscale coordination, packages) through Cloud NAT (≈ $1/month) and Google APIs through Private Google Access.
+- **Admin access:** IAP TCP forwarding + OS Login (`gcloud compute ssh --tunnel-through-iap`). The only inbound rule allows TCP 22 from Google's IAP range `35.235.240.0/20`.
+- **Dev exception:** the dev node runs in **us-central1** to use GCP's always-free e2-micro. Dev holds no real personal data; prod runs the node in asia-south1 with a CMEK disk.
 
 ### 16.3 Terraform layout
 ```
 infra/
+├── bootstrap/          # per project: APIs, state bucket, KMS key ring + key, service-agent key access, WIF + plan SA
 ├── modules/
-│   ├── network/        # VPC, subnet, route table, S3 gateway endpoint
-│   ├── compute/        # EC2, IAM instance profile, SG (no ingress), EBS (KMS)
-│   ├── kms/            # CMK + key policy
-│   ├── backup/         # S3 bucket (SSE-KMS, Object Lock, lifecycle, block public access)
-│   ├── secrets/        # Secrets Manager entries (names only; values set out-of-band)
-│   └── budget/         # AWS Budgets alerts (50/80/100%)
+│   ├── network/        # VPC, node subnet (Private Google Access), Cloud Router + NAT, IAP-SSH firewall
+│   ├── secrets/        # Secret Manager containers (single region, CMEK; values set out-of-band)
+│   ├── database/       # Firestore (default), CMEK, delete protection, backup schedule
+│   ├── app/            # Cloud Run api + worker, service accounts, IAM, Cloud Tasks queue
+│   ├── scheduler/      # Cloud Scheduler jobs (Asia/Kolkata) → worker with OIDC
+│   ├── entry_node/     # e2-micro, Shielded VM, no external IP, Tailscale startup script
+│   ├── backup/         # GCS bucket (CMEK, retention policy, lifecycle, public access prevention)
+│   └── budget/         # Cloud Billing budget (INR) + e-mail channel
 └── envs/
-    └── prod/           # one environment for one user; dev = local Docker
-        ├── main.tf  backend.tf  variables.tf  outputs.tf  versions.tf
+    ├── dev/            # values from GitHub `dev` environment secrets
+    └── prod/           # created, idle
 ```
-- Remote state: S3 bucket with versioning + SSE-KMS; native S3 state locking (`use_lockfile`) or DynamoDB (`Not verified` which one to use with the current Terraform version; confirm in Phase 5).
-- Tags on everything: `owner`, `project = "personal-ai-agent"`, `env`, `managed_by = "terraform"`.
+- Remote state: GCS bucket with versioning; GCS backend locking is built in.
+- Labels on everything: `owner`, `project = "personal-ai-agent"`, `env`, `managed_by = "terraform"`.
 - Every `apply` is preceded by `plan` and an owner review. Changes to IAM, network or cost trigger a security checkpoint.
+- Versions: Terraform 1.16.x, Google provider 8.5.0 (validated 2026-10-03). Details: [infra/README.md](../infra/README.md).
 
-### 16.4 Server configuration (Ansible)
-Roles: `base` (updates, unattended-upgrades, auditd, time sync IST), `tailscale`, `postgres` (+ pgvector), `app` (systemd units for the API and workers, Caddy), `backup` (pg_dump → S3), `hardening` (CIS-style basics). Run `--check --diff` first; pass `ansible-lint`.
+### 16.4 Server configuration
+The entry node is configured by its startup script (Tailscale install and join). Phase 2 adds the HTTPS proxy that attaches ID tokens, either through Ansible (`base`, `tailscale`, `proxy`, `hardening` roles; `--check --diff` first) or a container-optimised image. The application itself is a container on Cloud Run, so there is no app server to configure.
 
 ---
 
 ## 17. Servers and compute (D1)
 
-### 17.1 Options compared
-| Option | What runs where | Monthly infra (USD / INR) | Privacy | Maintenance | Phone access | Fit |
+### 17.1 Options compared (on Google Cloud)
+| Option | What runs where | Monthly infra (USD / INR, pre-tax) | Privacy | Maintenance | Phone access | Fit |
 |---|---|---|---|---|---|---|
-| **B. Private cloud server** (recommended) | EC2 t4g.medium (2 vCPU, 4 GiB, Mumbai $0.0224/h ([Spare Cores](https://sparecores.com/server/aws/t4g.medium))) running everything | ≈ $30 / ₹2,890 (§21) | High (India, your keys) | Medium (Ansible) | Tailnet | Best balance |
-| A. Serverless AWS | Lambda + API Gateway + RDS/DynamoDB | ≈ $25–40 / ₹2,400–3,850 | Medium–High | Low | **Needs a public API endpoint** (P9 risk) | Good, but it adds public surface |
-| C. Local Mac at home | Mac mini running everything, plus Tailscale | ≈ $1 power + one-time hardware | Highest | Medium | Tailnet | Cheapest monthly; home power/internet outages |
-| D. Hybrid | Mac at home for data + cloud LLM | ≈ $1–3 + LLM | High | Medium | Tailnet | Good if you already own a Mac to keep on 24/7 |
+| **E2-GCP. Serverless + tailnet entry node** (recommended) | Cloud Run (api, worker) + Firestore + one e2-micro entry node (asia-south1, $0.0101/h) | ≈ $10 / ₹960 | High (India, CMEK; LLM 🔓) | Low | Tailnet | Owner asked for "own servers + serverless as much as possible" |
+| A. Serverless only, public + IAP | Cloud Run behind Identity-Aware Proxy, no VM | ≈ $1 / ₹100 | Medium–High | Lowest | Google login in the browser | Adds a public (IAP-guarded) endpoint (P9 trade-off) |
+| B. Private VM running everything | e2-medium/e2-standard-2 with Postgres on disk | ≈ $30+ (`Not verified`) | High | Medium (patching, backups) | Tailnet | Only if serverless limits bite |
+| C. Local Mac at home | Mac mini running everything, plus Tailscale | ≈ $1 power + one-time hardware | Highest | Medium | Tailnet | Cheapest monthly; home outages |
+| D. Hybrid | Mac at home for data + Cloud Run + LLM | ≈ $1–3 + LLM | High | Medium | Tailnet | If you already own a Mac to keep on 24/7 |
 
-**PROVISIONAL recommendation (D1):** **B.** Reasons: it gives no public ingress; all data stays in India under your KMS key; it uses tools you know well (Terraform + Ansible); the cost is predictable; it has better uptime than a home Mac. Choose **C or D** if you already have a spare Apple-silicon Mac that can run 24/7 and you want the lowest monthly cost.
+**PROVISIONAL recommendation (D1, updated 2026-10-03):** **E2-GCP.** ~~Option B, EC2 t4g.medium~~ SUPERSEDED (by D4 = GCP). Reasons: no public ingress, data in India under your CMEK key, near-zero idle cost, and the one small server you asked for.
 
-### 17.2 Instance sizing
-| Size | RAM | On-demand Mumbai | Fits |
+### 17.2 Instance sizing (entry node)
+| Size | RAM | On-demand price | Fits |
 |---|---|---|---|
-| t4g.small | 2 GiB | $0.0112/h ≈ $8.2/month ([Spare Cores](https://sparecores.com/server/aws/t4g.small)) | API + Postgres, **no** local voice |
-| **t4g.medium** | 4 GiB | $0.0224/h ≈ $16.4/month | API + Postgres + small embedding model |
-| t4g.large | 8 GiB | ≈ $32.7/month (2× medium, `Not verified`) | + local Whisper/Kokoro voice |
-
-Savings Plans or Reserved pricing can cut this further. `Not verified`.
-
-### 17.3 Hardware disclosure (only if D1 = C/D or D2 = local model)
-| Item | Value | Source / status |
-|---|---|---|
-| Mac mini M4 16 GB/512 GB | ₹79,900 (retail listing) | [ApplePriceHunt](https://applepricehunt.com/in/mac-mini-m4-16gb-512gb-silver) — sources conflict (one says the base model is ₹99,900); `Not verified` on apple.com/in |
-| Mac mini M4 24 GB/512 GB | ₹90,999 (retail listing) | [ApplePriceHunt](https://applepricehunt.com/in/mac-mini-m4-24gb-512gb-silver), `Not verified` |
-| Local LLM that fits 24–32 GB | Qwen3 14B or Gemma 3 12B (Q4); Gemma 4 26B A4B (MoE) | [HF blog](https://huggingface.co/blog/daya-shankar/open-source-llm-models-to-run-locally); tokens/sec `Not verified`, benchmark before buying |
-| Disk | Model 8–20 GB + data < 5 GB + backups | Estimate |
-| Power | ~10 kWh/month at idle-heavy use ≈ ₹80 | Estimate, `Not verified` |
-
----
+| **e2-micro** (prod, asia-south1) | 1 GiB | $0.0101/h ≈ $7.37/month ([gcloud-compute.com](https://gcloud-compute.com/e2-micro.html), data 2026-09-27) | Tailscale + token proxy |
+| e2-micro (dev, us-central1) | 1 GiB | **Always free** (one per billing account in us-central1/us-east1/us-west1) | Dev only (no real data) |
+| e2-micro Spot (asia-south1) | 1 GiB | ≈ $0.006/h ≈ $4.4/month | Can be pre-empted; not for prod |
 
 ## 18. CI/CD
 
@@ -718,8 +717,9 @@ Savings Plans or Reserved pricing can cut this further. `Not verified`.
 
 - **GitHub Actions** in a **private** repository.
 - Pipeline: `ruff` + `black --check` → `mypy` → `pytest` (unit + integration with a Postgres service container) → build the Docker image (pinned base digest, non-root) → scan (Trivy for image and IaC, `gitleaks` for secrets, `pip-audit` for dependencies, `checkov` + `tflint` for Terraform) → deploy.
-- **AWS access via GitHub OIDC**: an IAM role trusted only by `repo:<OWNER>/<REPO>:ref:refs/heads/main`. No access keys in GitHub. (Weekend v1 used a downloaded service-account key; that is not allowed here.)
-- **Deploy gate:** a manual approval environment (`production`). Deploy = push the image to ECR, then run an SSM Run Command on the instance: `docker compose pull && up -d`, followed by a health check and automatic rollback to the previous tag on failure.
+- **Google Cloud access via Workload Identity Federation:** GitHub's OIDC token is exchanged for a short-lived token of a **read-only plan service account**. The provider only accepts `SharoffNIKHIL/Weekend2.0` jobs running in the matching GitHub environment. No JSON keys anywhere. (Weekend v1 used a downloaded service-account key; that is not allowed here.)
+- **Deploy gate:** a manual approval environment (`production`). Deploy = push the image to Artifact Registry (asia-south1, CMEK), then deploy a new Cloud Run revision with no traffic, health-check it, and shift traffic. Rollback = route traffic back to the previous revision.
+- **Today (2026-10-03):** `branch-guard` (no tfvars in code, branch rules, `terraform fmt`/`validate`) and `terraform-plan` (masked plan as a PR comment) run on PRs into `dev`.
 - Terraform runs from the owner's Mac (plan → review → apply), not from CI, in v1.
 
 ---
@@ -728,12 +728,12 @@ Savings Plans or Reserved pricing can cut this further. `Not verified`.
 
 | Area | Design | P# |
 |---|---|---|
-| App logs | JSON logs → journald → CloudWatch Logs (7-day retention). Message content is **not** logged, only IDs and sizes. | P5 |
+| App logs | Structured JSON from Cloud Run → Cloud Logging (`_Default` bucket, 30-day retention; 50 GiB/month free). Message content is **not** logged, only IDs and sizes. | P5 |
 | Metrics | Request latency, LLM tokens and cost per day, STT/TTS latency, disk usage | — |
-| Alerts | Budget alerts (AWS Budgets at 50/80/100%); disk > 80%; API down 5 min → email-to-self / push | — |
-| Audit log | `audit_log` table with hash chain (each row stores the hash of the previous one) + nightly export to S3 **Object Lock** | P8 |
-| Backups | Nightly `pg_dump` (compressed, SSE-KMS) → S3; EBS snapshots weekly; retention per §9.4 | P10 |
-| Restore drill | Quarterly: restore the latest dump into a throwaway container, run integrity checks, record the result in Project Memory M7 | P10 |
+| Alerts | Cloud Billing budget alerts (50/80/100% actual + 100% forecast, INR); Cloud Monitoring uptime/error alerts → email-to-self / push | — |
+| Audit log | `audit_log` collection with a hash chain (each entry stores the hash of the previous one) + nightly copy to GCS under a **retention policy**; GCP Cloud Audit Logs for admin activity | P8 |
+| Backups | Firestore daily backup schedule (7 days, prod) + nightly Firestore export → GCS (CMEK); retention per §9.4 | P10 |
+| Restore drill | Quarterly: restore the latest backup into a new Firestore database in the dev project, run integrity checks, record the result in Project Memory M7 | P10 |
 
 ---
 
@@ -741,8 +741,8 @@ Savings Plans or Reserved pricing can cut this further. `Not verified`.
 A STRIDE analysis is done in Phase 4. Known top threats so far:
 1. **Prompt injection** through email or calendar content → tool misuse. *Mitigations:* data/instruction separation, write-tools need confirmation, allow-listed network per tool.
 2. **Phone theft** → *Mitigations:* passkey needs biometrics; revoke device from the tailnet; session revoke.
-3. **Leaked credentials in the repo** (happened in v1) → *Mitigations:* `gitleaks` pre-commit + CI, no `.env` committed, Secrets Manager only.
-4. **Runaway LLM cost** → *Mitigations:* daily cost cap in code + AWS Budgets.
+3. **Leaked credentials in the repo** (happened in v1) → *Mitigations:* `gitleaks` pre-commit + CI, no `.env` or `*.tfvars` committed (CI-enforced), Secret Manager only, no JSON keys.
+4. **Runaway LLM cost** → *Mitigations:* daily cost cap in code + Cloud Billing budget alerts + Cloud Run max instances.
 5. **Supply chain** (malicious package) → *Mitigations:* pinned versions with hashes, `pip-audit`, minimal dependencies.
 
 ---
@@ -751,61 +751,54 @@ A STRIDE analysis is done in Phase 4. Known top threats so far:
 
 ## 21. Cost model
 
-**Basis:** prices checked 2026-10-02 · USD 1 = ₹96.3 · region ap-south-1 · sizing from §3.3 · assumes ~50% of input tokens are prompt-cache hits.
+**Basis (updated 2026-10-03, D4 = GCP):** USD 1 = ₹96.12 (2026-10-02) · region asia-south1 · sizing from §3.3 · ~50% of input tokens are prompt-cache hits · an account billed by Google Cloud India adds **18% GST**. The previous AWS model (v0.1.x) is superseded.
 
-### 21.1 LLM (Option A: Bedrock India profile, +10% regional premium)
+### 21.1 LLM (Option A2: Claude on Vertex AI, global endpoint, no premium)
 Routing: 80% of turns on Haiku 4.5 ($1/$5), 20% on Sonnet 5 ($2/$10, plus a 30% tokenizer uplift). Cache reads are charged at 0.1× input.
 
-| Scenario | Turns/month | Haiku 4.5 | Sonnet 5 | +10% premium | **Total USD** | **Total INR** |
-|---|---|---|---|---|---|---|
-| Low | 900 | $2.63 | $1.71 | $0.43 | **≈ $4.8** | **≈ ₹460** |
-| Expected | 3,000 | $8.76 | $5.69 | $1.45 | **≈ $15.9** | **≈ ₹1,530** |
-| Heavy | 9,000 | $26.28 | $17.08 | $4.34 | **≈ $47.7** | **≈ ₹4,590** |
+| Scenario | Turns/month | Haiku 4.5 | Sonnet 5 | **Total USD** | **Total INR** |
+|---|---|---|---|---|---|
+| Low | 900 | $2.63 | $1.71 | **≈ $4.3** | **≈ ₹420** |
+| Expected | 3,000 | $8.76 | $5.69 | **≈ $14.5** | **≈ ₹1,390** |
+| Heavy | 9,000 | $26.28 | $17.08 | **≈ $43.4** | **≈ ₹4,170** |
 
-How the Expected Haiku figure is calculated: 2,400 turns × 3,000 input tokens = 7.2M tokens. Half are uncached (3.6M × $1 = $3.60) and half are cache reads (3.6M × $0.10 = $0.36). Output is 0.96M × $5 = $4.80. Total **$8.76**.
+How the Expected Haiku figure is calculated: 2,400 turns × 3,000 input tokens = 7.2M tokens. Half are uncached (3.6M × $1 = $3.60) and half are cache reads (3.6M × $0.10 = $0.36). Output is 0.96M × $5 = $4.80. Total **$8.76**. A regional/multi-region endpoint would add 10%.
 
-⚠️ If Bedrock charges Sonnet 5 at $3/$15 (see the §7.3 conflict), Expected rises by about $2.8.
-
-### 21.2 Infrastructure (Option B: private server)
+### 21.2 Infrastructure (Option E2-GCP, prod)
 | Item | Basis | USD/month | INR/month | Status |
 |---|---|---|---|---|
-| EC2 t4g.medium | $0.0224/h × 730 h | 16.35 | 1,575 | Source: Spare Cores |
-| EBS gp3 40 GB | ~$0.09/GB-month | 3.60 | 347 | `Not verified` (Mumbai rate) |
-| Public IPv4 | $0.005/h × 730 h | 3.65 | 351 | `Not verified` (Mumbai) |
-| KMS CMK | 2 keys × $1 | 2.00 | 193 | `Not verified` |
-| Secrets Manager | 5 secrets × $0.40 | 2.00 | 193 | `Not verified` |
-| S3 backups + Object Lock | ~15 GB + requests | 0.60 | 58 | Estimate |
-| EBS snapshots | weekly, incremental | 1.00 | 96 | Estimate |
-| CloudWatch Logs | < 1 GB/month | 1.00 | 96 | Estimate |
+| Entry node e2-micro (asia-south1) | $0.0101/h × 730 h | 7.37 | 708 | gcloud-compute.com, data 2026-09-27 |
+| Boot disk pd-balanced 10 GB (CMEK) | ~$0.11/GB-month | 1.10 | 106 | `Not verified` (Mumbai rate) |
+| Cloud NAT | $0.0014/VM-h × 730 + ~1 GiB × $0.045 | 1.07 | 103 | cloud.google.com/nat (via search) |
+| Cloud Run (api + worker) | ~15k vCPU-s/month vs 180k free | 0.00 | 0 | Free tier per billing account |
+| Firestore | Within 1 GiB + 50k reads/day free; daily backups | 0.05 | 5 | Estimate |
+| Cloud KMS | 1 key version $0.06 + CMEK ops | 0.10 | 10 | `Not verified` |
+| Secret Manager | 3 versions (6 free) | 0.00 | 0 | Free tier |
+| GCS backups | ~15 GB Standard + soft delete | 0.40 | 38 | Estimate |
+| Cloud Scheduler / Tasks / Logging / Budgets | 2 jobs (3 free), < 1M tasks, < 50 GiB logs | 0.00 | 0 | Free tiers |
 | Tailscale | Personal plan | 0.00 | 0 | Source: SSD Nodes |
-| **Infra subtotal** | | **≈ 30.2** | **≈ ₹2,910** | |
+| **Infra subtotal** | | **≈ 10.1** | **≈ ₹970** | |
 
 ### 21.3 Voice
 | Option | Expected (900 min) |
 |---|---|
-| A. Local (upgrade to t4g.large) | +≈ $16.4 / ₹1,580 (bigger instance) |
-| B. Transcribe + Polly Neural | ≈ $31.6 / ₹3,040 |
+| A. Local in our container (more Cloud Run CPU/RAM) | Benchmark in Phase 2 (`Not verified`) |
+| B. Google Speech-to-Text (Chirp 3) + Text-to-Speech | ≈ $24 / ₹2,330 (`Not verified`) |
 
 ### 21.4 Monthly totals (Expected scenario)
-**Budget: ₹5,000 / month (≈ USD 52).**
+**Budget: ₹5,000 / month (≈ USD 52) including GST.**
 
-| Configuration | USD | INR | Fits budget? |
-|---|---|---|---|
-| Text only (B + Bedrock) | **≈ 46** | **≈ ₹4,440** | ✅ (≈ ₹560 headroom) |
-| Text + local voice (t4g.large) | ≈ 62 | ≈ ₹5,970 | ❌ over by ≈ ₹970 |
-| Text + AWS voice | ≈ 78 | ≈ ₹7,480 | ❌ over by ≈ ₹2,480 |
-| Local Mac (C) + Bedrock, text only | ≈ 17 + one-time hardware | ≈ ₹1,640 + ₹80k–1L once | ✅ monthly |
+| Configuration | USD pre-tax | USD incl. 18% GST | INR incl. GST | Fits budget? |
+|---|---|---|---|---|
+| **Prod, text only (E2-GCP + Claude global)** | **≈ 24.5** | **≈ 29.0** | **≈ ₹2,784** | ✅ (≈ ₹2,216 headroom) |
+| Prod + dev (dev ≈ ₹243) | ≈ 26.7 | ≈ 31.5 | ≈ ₹3,030 | ✅ |
+| Prod + Google voice (B) | ≈ 48.5 | ≈ 57.2 | ≈ ₹5,500 | ❌ over by ≈ ₹500 — try local STT/TTS first |
+| Local Mac (C) + Claude, text only | ≈ 15 + one-time hardware | ≈ 18 | ≈ ₹1,700 + ₹80k–1L once | ✅ monthly |
 
-**Getting voice under budget (Phase 2 options, to evaluate):**
-1. A 1-year Compute Savings Plan or Reserved Instance for t4g.large (discount `Not verified`).
-2. Run STT on the phone or Mac (on-device speech recognition) and keep only TTS on the server. Privacy and accuracy `Not verified`.
-3. Stop the instance overnight on a schedule (saves about 30% of compute, but no access at night).
-4. Smaller models: Whisper `base`/`small` int8 on t4g.medium. Benchmark the latency.
-
-One-time costs: none for B (no purchase). Optional: a domain name (not needed with a tailnet).
+One-time costs: none (no purchase). Optional: a domain name (not needed with a tailnet).
 
 ### 21.5 Cost controls
-AWS Budgets alerts at 50/80/100% of ₹5,000 (≈ $26 / $42 / $52), plus a forecast alert at 100% · in-app daily LLM cap (default ≈ ₹60/day ≈ $0.62) · Haiku-first routing · prompt caching on the system prompt + tools · no NAT gateway · stop the instance when unused (optional schedule) · Savings Plan after 3 months of stable usage.
+Cloud Billing budget in INR at 50/80/100% of ₹4,237 before tax (≈ ₹5,000 with GST), plus a forecast alert at 100% · in-app daily LLM cap (default ≈ ₹60/day) · Haiku-first routing · prompt caching on the system prompt + tools · Cloud Run `max_instance_count` caps · scale to zero · dev node stopped when unused · dev destroyed when idle.
 
 ---
 
@@ -815,7 +808,7 @@ AWS Budgets alerts at 50/80/100% of ₹5,000 (≈ $26 / $42 / $52), plus a forec
 | Phase | Name | Scope | Exit criteria | Status |
 |---|---|---|---|---|
 | 0 | Requirements & architecture | This document, D1–D4 decisions, diagrams, cost | D1–D4 decided; diagram and cost approved | 🟡 In progress |
-| 1 | MVP backend | FastAPI + agent core + Postgres; text chat via a test CLI/web page on the Mac; unit tests | Agent answers via the test interface, tests pass | ⚪ |
+| 1 | MVP backend | FastAPI + agent core + Firestore on Cloud Run (dev project); text chat via a test page through the entry node; unit tests (Firestore emulator) | Agent answers via the test interface, tests pass | ⚪ |
 | 2 | Mobile access | Tailnet, passkeys, PWA, push, voice (benchmark A vs B) | Owner uses it from the phone securely (D6, TLS) | ⚪ |
 | 3 | Memory & storage | Memories, retrieval, retention jobs, export/delete, first connector (Calendar) | Encrypted, owner-controlled memory with retention, export, delete | ⚪ |
 | 4 | Security hardening | STRIDE, P1–P10 evidence, injection tests | Threat model done; P1–P10 verified in M7 | ⚪ |
@@ -851,8 +844,9 @@ Each feature gets one entry when it ships. Template:
 | Q-3 | Languages: English only, or Hindi/Hinglish too? | D2, voice | Decide |
 | Q-4 | Do you have a spare Apple-silicon Mac that can run 24/7? | D1 (options C/D) | Answer |
 | Q-5 | Gmail: accept weekly re-auth, or use Workspace? | C2 | Decide in Phase 3 |
-| R-1 | Bedrock Sonnet 5 price conflict | Cost | Check the AWS pricing page |
-| R-2 | Several Mumbai prices marked `Not verified` | Cost | Refresh with the AWS Pricing Calculator before D1 |
+| R-1 | ~~Bedrock Sonnet 5 price conflict~~ — closed 2026-10-03 (D4 = GCP) · new: confirm Sonnet 5 price on Vertex AI | Cost | Check the Vertex AI pricing page |
+| R-2 | Several asia-south1 prices marked `Not verified` (pd-balanced, KMS, GCS, voice) | Cost | Refresh with the Google Cloud Pricing Calculator before D1 |
+| R-5 | Claude on Vertex AI has no India region (🔓 X1) | D2, P7 | Accept the global endpoint, or choose Gemini in asia-south1 |
 | R-3 | Leaked tokens in the Weekend v1 git history | Security | Rotate, and purge or archive the repo |
 
 ---
@@ -863,9 +857,9 @@ Each feature gets one entry when it ships. Template:
 | v1 problem | Weekend 2.0 rule |
 |---|---|
 | `venv/`, test environments and debug dumps committed (193 MB `.git`) | `.gitignore` from day 1; pre-commit size and secret checks |
-| Token leaked in `artifacts_env.txt` | `gitleaks` pre-commit + CI; Secrets Manager only |
-| Cloud Run `--allow-unauthenticated`, `us-central1` | No public ingress; India regions only |
-| Service-account JSON key file | OIDC for CI, instance roles for the server |
+| Token leaked in `artifacts_env.txt` | `gitleaks` pre-commit + CI; Secret Manager only |
+| Cloud Run `--allow-unauthenticated`, `us-central1` | Cloud Run with internal-only ingress + IAM; data only in asia-south1 (the dev entry node in us-central1 carries no real data) |
+| Service-account JSON key file | Workload Identity Federation for CI; attached service accounts on Cloud Run and the VM |
 | Plugin system downloading and executing code | Fixed in-repo tools only (§13) |
 | Multi-user/superuser code in a single-user app | Single-owner model, enforced in the database |
 | Two app entrypoints; routers never mounted | One entrypoint; a smoke test that hits every router |
@@ -886,21 +880,23 @@ Each feature gets one entry when it ships. Template:
 ### <n>.8 Change history
 ```
 
-## Appendix C — Sources (accessed 2026-10-02)
+## Appendix C — Sources (accessed 2026-10-02 and 2026-10-03)
 **Rank 1 — official docs and vendor pages**
 - Anthropic pricing: https://platform.claude.com/docs/en/about-claude/pricing
-- AWS blog, Claude India cross-region inference (2026-09-29): https://aws.amazon.com/blogs/machine-learning/amazon-bedrock-expands-claude-model-availability-to-india-cross-region-inference/
-- Bedrock model/region availability: https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.html
+- Anthropic, Claude on Google Cloud (endpoints, model IDs) (2026-10-03): https://platform.claude.com/docs/en/build-with-claude/claude-on-vertex-ai
+- Vertex AI generative AI pricing: https://cloud.google.com/vertex-ai/generative-ai/pricing · data governance: https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance
+- Cloud Run pricing: https://cloud.google.com/run/pricing · Firestore pricing: https://cloud.google.com/firestore/pricing · Firestore CMEK: https://docs.cloud.google.com/firestore/native/docs/cmek
+- Cloud NAT: https://cloud.google.com/nat · Cloud Run ingress: https://docs.cloud.google.com/run/docs/securing/ingress
+- *Historical (AWS design, superseded 2026-10-03):* AWS blog, Claude India cross-region inference: https://aws.amazon.com/blogs/machine-learning/amazon-bedrock-expands-claude-model-availability-to-india-cross-region-inference/ · Bedrock regions: https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.html
 - Tailscale HTTPS certificates: https://tailscale.com/docs/how-to/set-up-https-certificates
 - Telegram FAQ: https://telegram.org/faq
 - Duo py_webauthn: https://github.com/duo-labs/py_webauthn
 
 **Rank 3–4 — third-party (cross-check before relying on them)**
 - Gemini pricing summary: https://benchlm.ai/google/api-pricing
-- Bedrock pricing commentary: https://www.cloudzero.com/blog/amazon-bedrock-pricing/
-- EC2 t4g prices (Mumbai): https://sparecores.com/server/aws/t4g.small · https://sparecores.com/server/aws/t4g.medium
-- RDS t4g.micro: https://www.bytebase.com/dbcost/rds-pricing/ · https://www.economize.cloud/resources/aws/pricing/rds/db.t4g.micro/
-- Transcribe pricing: https://costgoat.com/pricing/amazon-transcribe · Polly: https://texttolab.com/blog/amazon-polly-pricing
+- e2-micro regional prices (data 2026-09-27): https://gcloud-compute.com/e2-micro.html
+- Cloud NAT pricing summary: https://enforza.io/gcp-cloud-nat-cost/
+- *Historical (AWS):* Bedrock pricing commentary https://www.cloudzero.com/blog/amazon-bedrock-pricing/ · EC2 t4g https://sparecores.com/server/aws/t4g.medium · RDS https://www.bytebase.com/dbcost/rds-pricing/ · Transcribe https://costgoat.com/pricing/amazon-transcribe · Polly https://texttolab.com/blog/amazon-polly-pricing
 - Open-source STT 2026: https://northflank.com/blog/best-open-source-speech-to-text-stt-model-in-2026-benchmarks · https://www.sevenlabs.site/blogs/best-open-source-speech-to-text-models-2026
 - Open-source TTS 2026: https://www.bentoml.com/blog/exploring-the-world-of-open-source-text-to-speech-models · Piper licence: https://www.cekura.ai/discover/piper-tts
 - Local LLMs 2026: https://huggingface.co/blog/daya-shankar/open-source-llm-models-to-run-locally
@@ -909,6 +905,6 @@ Each feature gets one entry when it ships. Template:
 - Google OAuth 7-day tokens: https://www.unipile.com/google-oauth-refresh-token/
 - iOS PWA push: https://www.magicbell.com/blog/pwa-ios-limitations-safari-support-complete-guide
 - Tailscale plans: https://www.ssdnodes.com/learn/is-tailscale-free-plan-limits
-- pgvector releases: https://releasealert.dev/github/pgvector/pgvector
+- pgvector releases (relevant only if D5 = Cloud SQL): https://releasealert.dev/github/pgvector/pgvector
 - Mac mini India prices: https://applepricehunt.com/in/mac-mini-m4-16gb-512gb-silver
 - USD/INR: https://tradingeconomics.com/india/currency

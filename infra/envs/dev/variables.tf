@@ -1,24 +1,30 @@
 # infra/envs/dev/variables.tf
-variable "aws_account_id" {
-  description = "12-digit AWS account ID (guards against the wrong account). Set in terraform.tfvars (git-ignored)."
+variable "project_id" {
+  description = "GCP project ID for dev. Sensitive-ish: kept in terraform.tfvars / GitHub secret, not in code."
   type        = string
 
   validation {
-    condition     = can(regex("^[0-9]{12}$", var.aws_account_id))
-    error_message = "aws_account_id must be exactly 12 digits."
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.project_id))
+    error_message = "project_id must be a valid GCP project ID."
   }
 }
 
-variable "region" {
-  description = "Primary AWS region."
+variable "billing_account_id" {
+  description = "Billing account ID (XXXXXX-XXXXXX-XXXXXX) for the budget."
   type        = string
-  default     = "ap-south-1"
+  sensitive   = true
 }
 
-variable "project_name" {
-  description = "Short project name used in resource names."
+variable "alert_email" {
+  description = "E-mail for budget alerts."
   type        = string
-  default     = "weekend2"
+  sensitive   = true
+}
+
+variable "region" {
+  description = "Primary region (Cloud Run, Firestore, Secret Manager, GCS, KMS)."
+  type        = string
+  default     = "asia-south1"
 }
 
 variable "env" {
@@ -27,109 +33,86 @@ variable "env" {
   default     = "dev"
 }
 
+variable "project_name" {
+  description = "Short project name used in resource names."
+  type        = string
+  default     = "weekend2"
+}
+
 variable "owner" {
-  description = "Value for the 'owner' tag."
+  description = "Value for the 'owner' label."
   type        = string
   default     = "nikhil"
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR (different from prod's 10.20.0.0/16 so both can exist side by side)."
+variable "node_region" {
+  description = "Region of the entry-node subnet and Cloud NAT (us-central1 = always-free e2-micro region)."
   type        = string
-  default     = "10.30.0.0/16"
+  default     = "us-central1"
 }
 
-variable "azs" {
-  description = "Two AZs in the region."
-  type        = list(string)
-  default     = ["ap-south-1a", "ap-south-1b"]
+variable "node_zone" {
+  description = "Zone of the entry node."
+  type        = string
+  default     = "us-central1-a"
 }
 
-variable "public_subnet_cidr" {
-  description = "Public (entry node) subnet CIDR."
+variable "subnet_cidr" {
+  description = "Entry-node subnet CIDR."
   type        = string
   default     = "10.30.0.0/24"
 }
 
-variable "private_subnet_cidrs" {
-  description = "Private (Aurora) subnet CIDRs."
-  type        = list(string)
-  default     = ["10.30.10.0/24", "10.30.11.0/24"]
-}
-
-variable "aurora_engine_version" {
-  description = "Aurora PostgreSQL version supporting scale-to-zero (16.3+). Confirm availability in ap-south-1 before plan."
-  type        = string
-}
-
-variable "aurora_max_acu" {
-  description = "Aurora maximum ACU (dev: 1)."
-  type        = number
-  default     = 1
-}
-
-variable "aurora_seconds_until_auto_pause" {
-  description = "Idle seconds before Aurora pauses (min 300)."
-  type        = number
-  default     = 300
-}
-
-variable "lambda_python_runtime" {
-  description = "Lambda Python runtime."
-  type        = string
-  default     = "python3.14"
-}
-
-variable "bedrock_model_default" {
-  description = "Default Bedrock inference profile (India geo)."
-  type        = string
-  default     = "in.anthropic.claude-haiku-4-5-20251001-v1:0"
-}
-
-variable "bedrock_model_strong" {
-  description = "Strong Bedrock inference profile (India geo). Dev uses Haiku for both to keep cost low."
-  type        = string
-  default     = "in.anthropic.claude-haiku-4-5-20251001-v1:0"
-}
-
-variable "app_package_path" {
-  description = "Path to the built app zip (null = placeholder)."
-  type        = string
-  default     = null
-}
-
 variable "entry_node_enabled" {
-  description = "Create the tailnet entry node. false = test the Function URL straight from your Mac with SigV4 (no EC2, no public IPv4 charge)."
+  description = "Create the tailnet entry node. false = no VM (the internal-only API is then unreachable; useful for infra-only tests)."
   type        = bool
   default     = true
 }
 
-variable "entry_node_instance_type" {
-  description = "t4g.small is free for 750 h/month under the EC2 T4g free trial until 2026-12-31 (ap-south-1 included). Switch to t4g.nano before then."
+variable "entry_node_machine_type" {
+  description = "Always-free: one e2-micro per billing account in us-central1/us-east1/us-west1."
   type        = string
-  default     = "t4g.small"
+  default     = "e2-micro"
 }
 
 variable "tailnet_hostname" {
-  description = "Non-identifying tailnet hostname for the dev entry node."
+  description = "Non-identifying tailnet hostname for the entry node."
   type        = string
   default     = "node-d1"
 }
 
 variable "tailscale_tag" {
-  description = "Tailscale ACL tag for the dev node (separate from prod's tag:weekend)."
+  description = "Tailscale ACL tag for the entry node."
   type        = string
   default     = "tag:weekend-dev"
 }
 
-variable "budget_limit_usd" {
-  description = "Monthly dev budget in USD, tax included (≈ ₹1,153 at ₹96.12 on 2026-10-02)."
-  type        = number
-  default     = 12
+variable "app_image" {
+  description = "Container image for the API and worker (placeholder until Phase 1)."
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
-variable "alert_email" {
-  description = "E-mail for budget alerts. Set in terraform.tfvars (git-ignored)."
+variable "vertex_location" {
+  description = "Vertex AI location for Claude. \"global\": current Claude models have no India region (P7 data exit)."
   type        = string
-  sensitive   = true
+  default     = "global"
+}
+
+variable "model_default" {
+  description = "Default Vertex AI model ID."
+  type        = string
+  default     = "claude-haiku-4-5@20251001"
+}
+
+variable "model_strong" {
+  description = "Stronger Vertex AI model ID."
+  type        = string
+  default     = "claude-haiku-4-5@20251001"
+}
+
+variable "budget_amount_inr" {
+  description = "Monthly budget in INR before tax (GCP budgets exclude GST)."
+  type        = number
+  default     = 850
 }

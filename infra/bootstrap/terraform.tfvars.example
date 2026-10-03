@@ -1,3 +1,4 @@
 # infra/bootstrap/terraform.tfvars.example — copy to terraform.tfvars (git-ignored)
-aws_account_id = "<AWS_ACCOUNT_ID>"
-owner          = "nikhil"
+project_id         = "<GCP_PROJECT_ID>" # e.g. weekend2-dev-<suffix>
+env                = "dev"
+billing_account_id = "<BILLING_ACCOUNT_ID>" # optional: lets the CI plan read budgets

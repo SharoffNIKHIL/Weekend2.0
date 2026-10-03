@@ -1,59 +1,86 @@
 # infra/modules/entry_node/variables.tf
 variable "name_prefix" {
-  description = "Prefix for resource names, e.g. weekend2-prod."
+  description = "Prefix for resource names, e.g. weekend2-dev."
   type        = string
 }
 
-variable "region" {
-  description = "AWS region (used by the boot script)."
+variable "project_id" {
+  description = "Project ID (for project-level log/metric writer roles)."
   type        = string
 }
 
-variable "vpc_id" {
-  description = "VPC ID."
+variable "zone" {
+  description = "Zone. Always-free e2-micro: us-central1/us-east1/us-west1 zones only (dev). Prod: asia-south1."
   type        = string
 }
 
 variable "subnet_id" {
-  description = "Public subnet ID (egress only)."
+  description = "Subnet in the zone's region."
   type        = string
 }
 
-variable "kms_key_arn" {
-  description = "Project KMS key (root volume, secret decryption)."
+variable "node_tag" {
+  description = "Network tag (matches the IAP SSH firewall rule)."
   type        = string
 }
 
-variable "tailscale_secret_arn" {
-  description = "ARN of the Secrets Manager secret holding a Tailscale auth key."
+variable "machine_type" {
+  description = "Machine type."
   type        = string
+  default     = "e2-micro"
 }
 
-variable "api_function_arn" {
-  description = "API Lambda ARN the node may call via its Function URL."
+variable "image" {
+  description = "Boot image."
   type        = string
+  default     = "debian-cloud/debian-12"
 }
 
-variable "instance_type" {
-  description = "Instance type. t4g.nano ($0.0028/h in ap-south-1, 2026-09-25 price list)."
-  type        = string
-  default     = "t4g.nano"
-}
-
-variable "root_volume_gb" {
-  description = "Root volume size (gp3)."
+variable "disk_gb" {
+  description = "Boot disk size (GB)."
   type        = number
-  default     = 8
+  default     = 10
+}
+
+variable "disk_type" {
+  description = "pd-standard (always-free 30 GB in US free-tier regions) or pd-balanced."
+  type        = string
+  default     = "pd-balanced"
+}
+
+variable "disk_kms_key_id" {
+  description = "CMEK key for the boot disk (must be in the disk's region). null = Google-managed key."
+  type        = string
+  default     = null
+}
+
+variable "tailscale_secret_id" {
+  description = "Secret resource ID holding a one-off Tailscale auth key."
+  type        = string
+}
+
+variable "api_service_name" {
+  description = "Cloud Run API service the node may invoke."
+  type        = string
+}
+
+variable "api_region" {
+  description = "Region of the Cloud Run API."
+  type        = string
 }
 
 variable "tailnet_hostname" {
   description = "Hostname on the tailnet. Keep it non-identifying: HTTPS certs publish it in public CT logs."
   type        = string
-  default     = "node-a1"
 }
 
 variable "tailscale_tag" {
   description = "Tailscale ACL tag for this node."
   type        = string
-  default     = "tag:weekend"
+}
+
+variable "deletion_protection" {
+  description = "Block instance deletion. Dev sets false."
+  type        = bool
+  default     = true
 }

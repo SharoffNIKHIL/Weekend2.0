@@ -1,6 +1,6 @@
 # .github/workflows/branch-guard.yml
 # Enforces docs/BRANCHING.md: no env values in code; feature_* -> dev; prod/release idle; fmt/validate clean.
-# No AWS credentials are used: validate runs with -backend=false.
+# No cloud credentials are used: validate runs with -backend=false.
 name: branch-guard
 
 on:

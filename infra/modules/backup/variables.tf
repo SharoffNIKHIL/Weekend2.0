@@ -1,27 +1,38 @@
 # infra/modules/backup/variables.tf
-variable "name_prefix" {
-  description = "Prefix for resource names, e.g. weekend2-prod."
+variable "project_id" {
+  description = "Project ID (makes the bucket name globally unique)."
   type        = string
 }
 
-variable "account_id" {
-  description = "AWS account ID, used to make the bucket name globally unique."
+variable "region" {
+  description = "Bucket location."
   type        = string
 }
 
-variable "kms_key_arn" {
-  description = "KMS key for SSE-KMS."
+variable "kms_key_id" {
+  description = "CMEK key in the same location."
   type        = string
 }
 
-variable "object_lock_days" {
-  description = "Default Object Lock retention (governance mode), in days."
+variable "retention_days" {
+  description = "Bucket retention policy: objects can't be deleted or overwritten for this many days."
   type        = number
   default     = 35
 }
 
+variable "soft_delete_days" {
+  description = "Soft-delete window after deletion (0 disables; 7–90 otherwise)."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.soft_delete_days == 0 || (var.soft_delete_days >= 7 && var.soft_delete_days <= 90)
+    error_message = "soft_delete_days must be 0 or between 7 and 90."
+  }
+}
+
 variable "force_destroy" {
-  description = "Let terraform destroy delete every object, including governance-locked ones. Keep false in prod."
+  description = "Let terraform destroy delete every object. Keep false in prod."
   type        = bool
   default     = false
 }

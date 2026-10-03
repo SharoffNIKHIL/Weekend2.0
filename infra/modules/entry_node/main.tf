@@ -1,159 +1,88 @@
 # infra/modules/entry_node/main.tf
-# The only server: a t4g.nano that joins the tailnet and forwards requests to the
-# API Function URL, signing them with its instance role. No inbound ports at all;
-# admin access is via SSM Session Manager (no SSH key, no port 22).
+# The only server: an e2-micro that joins the tailnet and forwards requests to the internal
+# Cloud Run API, attaching a Google ID token from its own service account. NO external IP:
+# egress via Cloud NAT, admin via IAP SSH + OS Login. Shielded VM.
 
-data "aws_ssm_parameter" "al2023_arm64" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+resource "google_service_account" "entry" {
+  account_id   = "${var.name_prefix}-entry"
+  display_name = "Weekend entry node (${var.name_prefix})"
 }
 
-resource "aws_security_group" "entry" {
-  name        = "${var.name_prefix}-entry-sg"
-  description = "Entry node: NO inbound; egress only for Tailscale and AWS APIs"
-  vpc_id      = var.vpc_id
+resource "google_project_iam_member" "entry" {
+  for_each = toset(["roles/logging.logWriter", "roles/monitoring.metricWriter"])
 
-  tags = { Name = "${var.name_prefix}-entry-sg" }
+  project = var.project_id
+  role    = each.value
+  member  = "serviceAccount:${google_service_account.entry.email}"
 }
 
-resource "aws_vpc_security_group_egress_rule" "https" {
-  security_group_id = aws_security_group.entry.id
-  description       = "HTTPS: AWS APIs, Tailscale control plane, package repos"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  cidr_ipv4         = "0.0.0.0/0"
+resource "google_secret_manager_secret_iam_member" "authkey" {
+  secret_id = var.tailscale_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.entry.email}"
 }
 
-resource "aws_vpc_security_group_egress_rule" "wireguard" {
-  security_group_id = aws_security_group.entry.id
-  description       = "Tailscale WireGuard (direct peer connections)"
-  ip_protocol       = "udp"
-  from_port         = 41641
-  to_port           = 41641
-  cidr_ipv4         = "0.0.0.0/0"
+resource "google_cloud_run_v2_service_iam_member" "invoke_api" {
+  name     = var.api_service_name
+  location = var.api_region
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.entry.email}"
 }
 
-resource "aws_vpc_security_group_egress_rule" "stun" {
-  security_group_id = aws_security_group.entry.id
-  description       = "Tailscale STUN (NAT traversal)"
-  ip_protocol       = "udp"
-  from_port         = 3478
-  to_port           = 3478
-  cidr_ipv4         = "0.0.0.0/0"
-}
+resource "google_compute_instance" "this" {
+  name                      = "${var.name_prefix}-entry"
+  machine_type              = var.machine_type
+  zone                      = var.zone
+  tags                      = [var.node_tag]
+  allow_stopping_for_update = true
+  deletion_protection       = var.deletion_protection
 
-data "aws_iam_policy_document" "assume" {
-  statement {
-    actions = ["sts:AssumeRole"]
+  boot_disk {
+    auto_delete       = true
+    kms_key_self_link = var.disk_kms_key_id # null = Google-managed key (dev only, no personal data)
 
-    principals {
-      type        = "Service"
-      identifiers = ["ec2.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "entry" {
-  name               = "${var.name_prefix}-entry-role"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "ssm" {
-  role       = aws_iam_role.entry.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-data "aws_iam_policy_document" "entry" {
-  statement {
-    sid       = "ReadTailscaleAuthKey"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.tailscale_secret_arn]
-  }
-
-  statement {
-    sid       = "DecryptWithProjectKey"
-    actions   = ["kms:Decrypt"]
-    resources = [var.kms_key_arn]
-  }
-
-  # Since Oct 2025 an AWS_IAM Function URL needs BOTH actions. Each one uses its own
-  # documented condition key (AWS Lambda docs: urls-auth). InvokedViaFunctionUrl stops
-  # this role from calling the plain Invoke API and skipping the URL path.
-  statement {
-    sid       = "CallApiFunctionUrl"
-    actions   = ["lambda:InvokeFunctionUrl"]
-    resources = [var.api_function_arn]
-
-    condition {
-      test     = "StringEquals"
-      variable = "lambda:FunctionUrlAuthType"
-      values   = ["AWS_IAM"]
+    initialize_params {
+      image = var.image
+      size  = var.disk_gb
+      type  = var.disk_type
     }
   }
 
-  statement {
-    sid       = "InvokeApiOnlyViaFunctionUrl"
-    actions   = ["lambda:InvokeFunction"]
-    resources = [var.api_function_arn]
-
-    condition {
-      test     = "Bool"
-      variable = "lambda:InvokedViaFunctionUrl"
-      values   = ["true"]
-    }
+  network_interface {
+    subnetwork = var.subnet_id
+    # no access_config block → no external IP
   }
-}
 
-resource "aws_iam_role_policy" "entry" {
-  name   = "${var.name_prefix}-entry-policy"
-  role   = aws_iam_role.entry.id
-  policy = data.aws_iam_policy_document.entry.json
-}
+  shielded_instance_config {
+    enable_secure_boot          = true
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
+  }
 
-resource "aws_iam_instance_profile" "entry" {
-  name = "${var.name_prefix}-entry-profile"
-  role = aws_iam_role.entry.name
-}
+  metadata = {
+    enable-oslogin         = "TRUE"
+    block-project-ssh-keys = "TRUE"
+  }
 
-resource "aws_instance" "this" {
-  ami                         = data.aws_ssm_parameter.al2023_arm64.value
-  instance_type               = var.instance_type
-  subnet_id                   = var.subnet_id
-  vpc_security_group_ids      = [aws_security_group.entry.id]
-  associate_public_ip_address = true # egress only; the security group has no inbound rules
-  iam_instance_profile        = aws_iam_instance_profile.entry.name
-  monitoring                  = false
-
-  user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    hostname            = var.tailnet_hostname
-    region              = var.region
-    tailscale_secret_id = var.tailscale_secret_arn
-    tailscale_tag       = var.tailscale_tag
+  metadata_startup_script = templatefile("${path.module}/startup.sh.tftpl", {
+    hostname      = var.tailnet_hostname
+    secret_id     = var.tailscale_secret_id
+    tailscale_tag = var.tailscale_tag
   })
 
-  metadata_options {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required" # IMDSv2 only
-    http_put_response_hop_limit = 1
+  service_account {
+    email  = google_service_account.entry.email
+    scopes = ["cloud-platform"] # access is limited by IAM roles above
   }
 
-  root_block_device {
-    volume_type           = "gp3"
-    volume_size           = var.root_volume_gb
-    encrypted             = true
-    kms_key_id            = var.kms_key_arn
-    delete_on_termination = true
+  scheduling {
+    provisioning_model = "STANDARD"
+    automatic_restart  = true
   }
-
-  credit_specification {
-    cpu_credits = "standard" # avoid 'unlimited' burst surcharges
-  }
-
-  tags = { Name = "${var.name_prefix}-entry" }
 
   lifecycle {
-    ignore_changes = [ami, user_data] # AMI updates are rolled out deliberately, not on every plan
+    ignore_changes = [boot_disk[0].initialize_params[0].image] # image updates are rolled out deliberately
   }
 
-  depends_on = [aws_iam_role_policy.entry]
+  depends_on = [google_secret_manager_secret_iam_member.authkey]
 }

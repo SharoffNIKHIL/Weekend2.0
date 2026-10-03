@@ -2,10 +2,11 @@
 """Run `terraform plan` for one environment and write a masked Markdown report for a PR.
 
 Nothing is applied. The binary plan stays in ~/.tfplans (outside the repo). The report
-masks the AWS account ID and e-mail addresses so it can be pasted into a public PR.
+masks the GCP project ID, project number, billing account ID and e-mail addresses so it can
+be pasted into a public PR.
 
 Usage (from the repo root):
-    python infra/scripts/plan_env.py --env dev                 # remote S3 state (after bootstrap)
+    python infra/scripts/plan_env.py --env dev                 # remote GCS state (after bootstrap)
     python infra/scripts/plan_env.py --env dev --local-state   # before bootstrap: throwaway local state
 """
 from __future__ import annotations
@@ -27,7 +28,10 @@ INFRA = Path(__file__).resolve().parents[1]
 PLAN_DIR = Path.home() / ".tfplans"
 IST = timezone(timedelta(hours=5, minutes=30))
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-ACCOUNT_RE = re.compile(r"(?<![0-9])[0-9]{12}(?![0-9])")
+NUMBER_RE = re.compile(r"(?<![0-9])[0-9]{10,13}(?![0-9])")  # GCP project numbers
+BILLING_RE = re.compile(r"\b[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}\b")
+PROJECT_RE = re.compile(r'^\s*project_id\s*=\s*"([^"]+)"', re.MULTILINE)
+PROJECT_IDS: list[str] = []
 ACTION_ORDER = ("create", "update", "replace", "delete", "read", "no-op")
 
 
@@ -41,9 +45,12 @@ def run(cmd: list[str], cwd: Path) -> str:
 
 
 def mask(text: str) -> str:
-    """Hide account IDs and e-mail addresses (repo is public)."""
+    """Hide project IDs/numbers, billing account IDs and e-mail addresses (repo is public)."""
+    for pid in PROJECT_IDS:
+        text = text.replace(pid, "<PROJECT_ID>")
     text = EMAIL_RE.sub("<EMAIL>", text)
-    return ACCOUNT_RE.sub("<ACCOUNT_ID>", text)
+    text = BILLING_RE.sub("<BILLING_ACCOUNT_ID>", text)
+    return NUMBER_RE.sub("<PROJECT_NUMBER>", text)
 
 
 def action_of(change: dict) -> str:
@@ -75,7 +82,7 @@ def report(env: str, version: str, counts: Counter, rows: list[tuple[str, str]],
         f"- Generated: {now} · {version} · state: {state}",
         f"- **Plan: {counts['create']} to add, {counts['update']} to change, "
         f"{counts['replace'] + counts['delete']} to destroy** (replace: {counts['replace']})",
-        "- Account ID and e-mail addresses are masked. Nothing has been applied.",
+        "- Project ID/number, billing account and e-mail addresses are masked. Nothing has been applied.",
         "",
         "| Action | Resource |",
         "|---|---|",
@@ -106,6 +113,7 @@ def main() -> int:
     if not (env_dir / "terraform.tfvars").exists():
         LOG.error("missing %s/terraform.tfvars (copy terraform.tfvars.example)", env_dir)
         return 2
+    PROJECT_IDS.extend(PROJECT_RE.findall((env_dir / "terraform.tfvars").read_text()))
     PLAN_DIR.mkdir(mode=0o700, exist_ok=True)
     plan_file = PLAN_DIR / f"weekend2-{args.env}.tfplan"
     out = args.out or PLAN_DIR / f"weekend2-{args.env}-plan.md"

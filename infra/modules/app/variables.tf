@@ -1,33 +1,23 @@
 # infra/modules/app/variables.tf
 variable "name_prefix" {
-  description = "Prefix for resource names, e.g. weekend2-prod."
+  description = "Prefix for resource names, e.g. weekend2-dev."
   type        = string
 }
 
-variable "kms_key_arn" {
-  description = "Project KMS key (env vars, logs, secrets)."
+variable "region" {
+  description = "Cloud Run and Cloud Tasks region."
   type        = string
 }
 
-variable "db_cluster_arn" {
-  description = "Aurora cluster ARN for the RDS Data API."
+variable "image" {
+  description = "Container image for both services. Default is Google's public hello image until Phase 1 builds the app."
   type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
-variable "db_secret_arn" {
-  description = "RDS-managed master secret ARN (Phase 1 replaces this with a least-privilege app user)."
+variable "firestore_database" {
+  description = "Firestore database ID."
   type        = string
-}
-
-variable "db_name" {
-  description = "Database name."
-  type        = string
-}
-
-variable "app_secret_arns" {
-  description = "Other secrets the functions may read (session signing key, connector credentials)."
-  type        = list(string)
-  default     = []
 }
 
 variable "backup_bucket_name" {
@@ -35,49 +25,40 @@ variable "backup_bucket_name" {
   type        = string
 }
 
-variable "backup_bucket_arn" {
-  description = "Backup bucket ARN."
-  type        = string
+variable "api_secret_ids" {
+  description = "Secret resource IDs the API may read (session signing key, connector credentials)."
+  type        = list(string)
+  default     = []
 }
 
-variable "schedule_group_name" {
-  description = "EventBridge Scheduler group for one-time reminder schedules."
+variable "vertex_location" {
+  description = "Vertex AI location for Claude: \"global\" (no India region exists for current Claude models; P7 exit) or a supported region."
   type        = string
-}
-
-variable "scheduler_role_arn" {
-  description = "Role EventBridge Scheduler assumes to invoke the worker."
-  type        = string
-}
-
-variable "python_runtime" {
-  description = "Lambda Python runtime (python3.14 is GA on Lambda since 2025-11)."
-  type        = string
-  default     = "python3.14"
-}
-
-variable "api_memory_mb" {
-  description = "API function memory in MB."
-  type        = number
-  default     = 1024
+  default     = "global"
 }
 
 variable "model_default" {
-  description = "Default Bedrock inference profile ID (India geo). Confirm in the Bedrock console before Phase 1."
+  description = "Default model ID on Vertex AI."
   type        = string
-  default     = "in.anthropic.claude-haiku-4-5-20251001-v1:0"
+  default     = "claude-haiku-4-5@20251001"
 }
 
 variable "model_strong" {
-  description = "Stronger model profile ID for hard tasks (India geo). Exact ID not verified — confirm with: aws bedrock list-inference-profiles --region ap-south-1"
+  description = "Stronger model ID on Vertex AI for hard tasks."
   type        = string
-  default     = "in.anthropic.claude-sonnet-5"
+  default     = "claude-sonnet-5"
 }
 
-variable "log_retention_days" {
-  description = "CloudWatch Logs retention."
+variable "api_memory_mb" {
+  description = "API memory in MiB."
   type        = number
-  default     = 14
+  default     = 512
+}
+
+variable "max_instances" {
+  description = "Maximum API instances (caps cost)."
+  type        = number
+  default     = 2
 }
 
 variable "log_level" {
@@ -86,8 +67,8 @@ variable "log_level" {
   default     = "INFO"
 }
 
-variable "package_path" {
-  description = "Path to the built app zip. Null = use the placeholder handler."
-  type        = string
-  default     = null
+variable "deletion_protection" {
+  description = "Block terraform destroy of the Cloud Run services. Dev sets false."
+  type        = bool
+  default     = true
 }

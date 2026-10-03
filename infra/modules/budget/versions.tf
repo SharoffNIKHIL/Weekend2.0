@@ -1,9 +1,9 @@
 # infra/modules/budget/versions.tf
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.67"
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 8.5"
     }
   }
 }

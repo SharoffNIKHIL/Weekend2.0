@@ -1,13 +1,17 @@
 # infra/envs/dev/main.tf
-# Weekend 2.0 — dev. Same modules as prod (D1 option "E2 (revised)", PROVISIONAL — depends on D1),
-# sized for free tier / near-zero cost and built to be destroyed:
-#   - entry node t4g.small (EC2 T4g free trial, 750 h/month, until 2026-12-31) and can be switched off
-#   - Aurora 0–1 ACU, 1-day backups, no deletion protection, no final snapshot
-#   - KMS 7-day deletion window; secrets deleted at once; backup bucket force-destroyable, 1-day lock
-#   - no Google connector secret (Phase 3); 3-day log retention; USD 12 budget
-# Never put real personal data in dev.
+# Weekend 2.0 — dev on GCP (D4 = GCP, 2026-10-03). PROVISIONAL — depends on D1/D2.
+# Free tier wherever GCP has one, and built to be destroyed:
+#   - entry node: always-free e2-micro + 10 GB pd-standard in a US free-tier zone (dev holds NO
+#     real personal data; prod runs the node in asia-south1). No external IP; Cloud NAT egress.
+#   - Cloud Run scale-to-zero, Firestore (default) free quota, Secret Manager ≤ 6 versions free,
+#     Cloud Scheduler 2 of 3 free jobs, Cloud Tasks / Logging within free tiers
+#   - Firestore without delete protection or backups; bucket force_destroy, 1-day retention
+# The KMS key ring/key come from infra/bootstrap (GCP key rings can't be deleted).
 
-data "aws_caller_identity" "current" {}
+data "google_kms_crypto_key" "data" {
+  name     = "data"
+  key_ring = "projects/${var.project_id}/locations/${var.region}/keyRings/${local.name_prefix}"
+}
 
 locals {
   name_prefix = "${var.project_name}-${var.env}" # weekend2-dev
@@ -16,26 +20,17 @@ locals {
 module "network" {
   source = "../../modules/network"
 
-  name_prefix          = local.name_prefix
-  vpc_cidr             = var.vpc_cidr
-  azs                  = var.azs
-  public_subnet_cidr   = var.public_subnet_cidr
-  private_subnet_cidrs = var.private_subnet_cidrs
-}
-
-module "kms" {
-  source = "../../modules/kms"
-
-  name_prefix             = local.name_prefix
-  deletion_window_in_days = 7
+  name_prefix = local.name_prefix
+  region      = var.node_region
+  subnet_cidr = var.subnet_cidr
 }
 
 module "secrets" {
   source = "../../modules/secrets"
 
-  name_prefix             = local.name_prefix
-  kms_key_arn             = module.kms.key_arn
-  recovery_window_in_days = 0 # dev: delete at once so destroy/apply cycles can reuse the names
+  name_prefix = local.name_prefix
+  region      = var.region
+  kms_key_id  = data.google_kms_crypto_key.data.id
   secrets = {
     "tailscale/authkey"       = "Tailscale auth key for the dev entry node (one-off, tagged tag:weekend-dev, pre-approved)"
     "app/session-signing-key" = "HMAC key for passkey session cookies (dev)"
@@ -45,76 +40,75 @@ module "secrets" {
 module "database" {
   source = "../../modules/database"
 
-  name_prefix              = local.name_prefix
-  vpc_id                   = module.network.vpc_id
-  subnet_ids               = module.network.private_subnet_ids
-  kms_key_arn              = module.kms.key_arn
-  engine_version           = var.aurora_engine_version
-  max_acu                  = var.aurora_max_acu
-  seconds_until_auto_pause = var.aurora_seconds_until_auto_pause
-  backup_retention_days    = 1
-  deletion_protection      = false
-  skip_final_snapshot      = true
+  location              = var.region
+  kms_key_id            = data.google_kms_crypto_key.data.id
+  delete_protection     = false
+  pitr                  = false
+  backup_retention_days = 0
 }
 
 module "backup" {
   source = "../../modules/backup"
 
-  name_prefix      = local.name_prefix
-  account_id       = data.aws_caller_identity.current.account_id
-  kms_key_arn      = module.kms.key_arn
-  object_lock_days = 1
+  project_id       = var.project_id
+  region           = var.region
+  kms_key_id       = data.google_kms_crypto_key.data.id
+  retention_days   = 1
+  soft_delete_days = 0
   force_destroy    = true
-}
-
-module "scheduler" {
-  source = "../../modules/scheduler"
-
-  name_prefix         = local.name_prefix
-  worker_function_arn = module.app.worker_function_arn
 }
 
 module "app" {
   source = "../../modules/app"
 
   name_prefix         = local.name_prefix
-  kms_key_arn         = module.kms.key_arn
-  db_cluster_arn      = module.database.cluster_arn
-  db_secret_arn       = module.database.master_secret_arn
-  db_name             = module.database.database_name
-  app_secret_arns     = [module.secrets.arns["app/session-signing-key"]]
+  region              = var.region
+  image               = var.app_image
+  firestore_database  = module.database.database_name
   backup_bucket_name  = module.backup.bucket_name
-  backup_bucket_arn   = module.backup.bucket_arn
-  schedule_group_name = module.scheduler.group_name
-  scheduler_role_arn  = module.scheduler.role_arn
-  python_runtime      = var.lambda_python_runtime
-  model_default       = var.bedrock_model_default
-  model_strong        = var.bedrock_model_strong
-  package_path        = var.app_package_path
-  log_retention_days  = 3
+  api_secret_ids      = [module.secrets.ids["app/session-signing-key"]]
+  vertex_location     = var.vertex_location
+  model_default       = var.model_default
+  model_strong        = var.model_strong
+  max_instances       = 1
   log_level           = "DEBUG"
+  deletion_protection = false
+}
+
+module "scheduler" {
+  source = "../../modules/scheduler"
+
+  name_prefix             = local.name_prefix
+  region                  = var.region
+  worker_url              = module.app.worker_url
+  invoker_service_account = module.app.invoker_service_account
 }
 
 module "entry_node" {
   source = "../../modules/entry_node"
   count  = var.entry_node_enabled ? 1 : 0
 
-  name_prefix          = local.name_prefix
-  region               = var.region
-  vpc_id               = module.network.vpc_id
-  subnet_id            = module.network.public_subnet_id
-  kms_key_arn          = module.kms.key_arn
-  tailscale_secret_arn = module.secrets.arns["tailscale/authkey"]
-  api_function_arn     = module.app.api_function_arn
-  instance_type        = var.entry_node_instance_type
-  tailnet_hostname     = var.tailnet_hostname
-  tailscale_tag        = var.tailscale_tag
+  name_prefix         = local.name_prefix
+  project_id          = var.project_id
+  zone                = var.node_zone
+  subnet_id           = module.network.subnet_id
+  node_tag            = module.network.node_tag
+  machine_type        = var.entry_node_machine_type
+  disk_type           = "pd-standard"
+  disk_kms_key_id     = null # key is in asia-south1, node is in a US free-tier zone; no personal data in dev
+  tailscale_secret_id = module.secrets.ids["tailscale/authkey"]
+  api_service_name    = module.app.api_service_name
+  api_region          = var.region
+  tailnet_hostname    = var.tailnet_hostname
+  tailscale_tag       = var.tailscale_tag
+  deletion_protection = false
 }
 
 module "budget" {
   source = "../../modules/budget"
 
-  name_prefix = local.name_prefix
-  limit_usd   = var.budget_limit_usd
-  alert_email = var.alert_email
+  name_prefix        = local.name_prefix
+  billing_account_id = var.billing_account_id
+  alert_email        = var.alert_email
+  amount             = var.budget_amount_inr
 }

@@ -1,21 +1,15 @@
-%% Weekend 2.0 - Voice request flow. FigJam: https://www.figma.com/board/pMvZioGximavxDcsD14Ee9
+%% Weekend 2.0 - Voice request flow on Google Cloud (DESIGN.md section 5.3, v0.2.0)
 sequenceDiagram
-  title Voice request flow - push to talk
-  participant Owner
-  participant PhonePWA
-  participant API
-  participant VoiceWorker
-  participant AgentCore
-  participant Bedrock
-  Owner->>PhonePWA: Hold to talk
-  PhonePWA->>API: Upload audio clip
-  API->>VoiceWorker: Transcribe
-  VoiceWorker-->>API: Text, raw audio discarded
-  API->>AgentCore: Run chat turn
-  AgentCore->>Bedrock: Prompt, stream
-  Bedrock-->>AgentCore: Answer sentences
-  AgentCore-->>API: Sentence by sentence
-  API->>VoiceWorker: Synthesize sentence
-  VoiceWorker-->>API: Audio chunk
-  API-->>PhonePWA: Stream audio and text
-  PhonePWA-->>Owner: Play reply
+  participant P as PWA
+  participant A as API Cloud Run
+  participant S as STT local or Google STT
+  participant L as Claude Vertex AI
+  participant V as TTS local or Google TTS
+  P->>A: upload audio clip via entry node
+  A->>S: transcribe
+  S-->>A: text
+  A->>L: same flow as text
+  L-->>A: answer text sentence by sentence
+  A->>V: synthesize each sentence
+  V-->>A: audio chunks
+  A-->>P: audio and text

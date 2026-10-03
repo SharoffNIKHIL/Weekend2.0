@@ -1,67 +1,29 @@
 # infra/modules/scheduler/main.tf
-# Daily jobs in IST. Reminders are NOT polled: the API creates one-time schedules
-# ("reminder-<id>") in this group, so Aurora can stay paused between uses.
+# Daily jobs in IST call the worker with an OIDC token. Reminders are NOT polled: the API
+# creates one Cloud Task per reminder. Cloud Scheduler gives 3 free jobs per billing account.
 
-data "aws_caller_identity" "current" {}
-
-resource "aws_scheduler_schedule_group" "this" {
-  name = var.name_prefix
-}
-
-data "aws_iam_policy_document" "assume" {
-  statement {
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type        = "Service"
-      identifiers = ["scheduler.amazonaws.com"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
-    }
-  }
-}
-
-resource "aws_iam_role" "scheduler" {
-  name               = "${var.name_prefix}-scheduler-role"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-}
-
-data "aws_iam_policy_document" "invoke_worker" {
-  statement {
-    actions   = ["lambda:InvokeFunction"]
-    resources = [var.worker_function_arn, "${var.worker_function_arn}:*"]
-  }
-}
-
-resource "aws_iam_role_policy" "scheduler" {
-  name   = "${var.name_prefix}-scheduler-invoke-worker"
-  role   = aws_iam_role.scheduler.id
-  policy = data.aws_iam_policy_document.invoke_worker.json
-}
-
-resource "aws_scheduler_schedule" "daily" {
+resource "google_cloud_scheduler_job" "daily" {
   for_each = var.daily_jobs
 
-  name                         = "${var.name_prefix}-${each.key}-daily"
-  group_name                   = aws_scheduler_schedule_group.this.name
-  schedule_expression          = each.value
-  schedule_expression_timezone = "Asia/Kolkata"
+  name             = "${var.name_prefix}-${each.key}-daily"
+  region           = var.region
+  schedule         = each.value
+  time_zone        = "Asia/Kolkata"
+  attempt_deadline = "320s"
 
-  flexible_time_window {
-    mode = "OFF"
+  retry_config {
+    retry_count = 2
   }
 
-  target {
-    arn      = var.worker_function_arn
-    role_arn = aws_iam_role.scheduler.arn
-    input    = jsonencode({ job = each.key })
+  http_target {
+    http_method = "POST"
+    uri         = "${var.worker_url}/jobs/${each.key}"
+    body        = base64encode(jsonencode({ job = each.key }))
+    headers     = { "Content-Type" = "application/json" }
 
-    retry_policy {
-      maximum_retry_attempts = 2
+    oidc_token {
+      service_account_email = var.invoker_service_account
+      audience              = var.worker_url
     }
   }
 }

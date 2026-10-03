@@ -1,146 +1,57 @@
 # infra/modules/backup/main.tf
 # Bucket for data exports (P6), audit-log copies (P8) and restore drills (P10).
-# Object Lock (governance mode): the bucket default (35 days) covers daily/ copies. The
-# worker sets a per-object retain-until date on monthly/ (365 d) and audit/ (730 d), so
-# those stay locked for their whole lifecycle. P6 purges of locked versions are an
-# owner-only admin action with --bypass-governance-retention (see infra/README.md).
+# A bucket retention policy blocks deletion and overwrite of every object for N days (not locked,
+# so the owner can still remove the policy for a P6 purge — see infra/README.md). CMEK, private,
+# uniform access. Retention policies and Object Versioning are mutually exclusive, so versioning is off.
 
-resource "aws_s3_bucket" "this" {
-  bucket              = "${var.name_prefix}-backups-${var.account_id}"
-  object_lock_enabled = true
-  force_destroy       = var.force_destroy # dev only: lets destroy empty a bucket that holds locked test objects
-}
+resource "google_storage_bucket" "this" {
+  name                        = "${var.project_id}-backups"
+  location                    = var.region
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = var.force_destroy
 
-resource "aws_s3_bucket_versioning" "this" {
-  bucket = aws_s3_bucket.this.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_object_lock_configuration" "this" {
-  bucket = aws_s3_bucket.this.id
-
-  rule {
-    default_retention {
-      mode = "GOVERNANCE"
-      days = var.object_lock_days
-    }
+  encryption {
+    default_kms_key_name = var.kms_key_id
   }
 
-  depends_on = [aws_s3_bucket_versioning.this]
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
-  bucket = aws_s3_bucket.this.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = var.kms_key_arn
-    }
-    bucket_key_enabled = true
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "this" {
-  bucket                  = aws_s3_bucket.this.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_ownership_controls" "this" {
-  bucket = aws_s3_bucket.this.id
-
-  rule {
-    object_ownership = "BucketOwnerEnforced"
-  }
-}
-
-resource "aws_s3_bucket_lifecycle_configuration" "this" {
-  bucket = aws_s3_bucket.this.id
-
-  rule {
-    id     = "daily-exports"
-    status = "Enabled"
-
-    filter {
-      prefix = "daily/"
-    }
-
-    expiration {
-      days = 35
-    }
-
-    noncurrent_version_expiration {
-      noncurrent_days = 1
-    }
+  retention_policy {
+    retention_period = var.retention_days * 86400
+    is_locked        = false
   }
 
-  rule {
-    id     = "monthly-exports"
-    status = "Enabled"
-
-    filter {
-      prefix = "monthly/"
-    }
-
-    expiration {
-      days = 365
-    }
-
-    noncurrent_version_expiration {
-      noncurrent_days = 30 # an overwrite stays recoverable for 30 days
-    }
+  soft_delete_policy {
+    retention_duration_seconds = var.soft_delete_days * 86400
   }
 
-  rule {
-    id     = "audit-log-copies"
-    status = "Enabled"
-
-    filter {
-      prefix = "audit/"
-    }
-
-    expiration {
-      days = 730
-    }
-
-    noncurrent_version_expiration {
-      noncurrent_days = 30 # an overwrite stays recoverable for 30 days
-    }
-  }
-}
-
-data "aws_iam_policy_document" "tls_only" {
-  statement {
-    sid     = "DenyInsecureTransport"
-    effect  = "Deny"
-    actions = ["s3:*"]
-    resources = [
-      aws_s3_bucket.this.arn,
-      "${aws_s3_bucket.this.arn}/*",
-    ]
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-
+  lifecycle_rule {
     condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
+      age            = 35
+      matches_prefix = ["daily/"]
+    }
+    action {
+      type = "Delete"
     }
   }
-}
 
-resource "aws_s3_bucket_policy" "this" {
-  bucket = aws_s3_bucket.this.id
-  policy = data.aws_iam_policy_document.tls_only.json
+  lifecycle_rule {
+    condition {
+      age            = 365
+      matches_prefix = ["monthly/"]
+    }
+    action {
+      type = "Delete"
+    }
+  }
 
-  depends_on = [aws_s3_bucket_public_access_block.this]
+  lifecycle_rule {
+    condition {
+      age            = 730
+      matches_prefix = ["audit/"]
+    }
+    action {
+      type = "Delete"
+    }
+  }
 }

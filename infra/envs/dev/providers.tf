@@ -1,14 +1,14 @@
 # infra/envs/dev/providers.tf
-provider "aws" {
-  region              = var.region
-  allowed_account_ids = [var.aws_account_id]
+provider "google" {
+  project               = var.project_id
+  region                = var.region
+  user_project_override = true # bill API quota (e.g. Billing Budgets) to this project
+  billing_project       = var.project_id
 
-  default_tags {
-    tags = {
-      owner      = var.owner
-      project    = "personal-ai-agent"
-      env        = var.env
-      managed_by = "terraform"
-    }
+  default_labels = {
+    owner      = var.owner
+    project    = "personal-ai-agent"
+    env        = var.env
+    managed_by = "terraform"
   }
 }

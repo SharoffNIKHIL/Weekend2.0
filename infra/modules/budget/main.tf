@@ -1,32 +1,48 @@
 # infra/modules/budget/main.tf
-# Monthly cost budget with e-mail alerts at 50/80/100% actual and 100% forecast.
-# No cost_types block, so include_tax = true: the limit is compared with the
-# tax-inclusive bill (AWS India / AISPL adds 18% GST), i.e. the owner's real spend.
+# Billing budget for this project with e-mail alerts at 50/80/100% actual and 100% forecast.
+# Indian billing accounts are billed in INR. Budgets track cost before tax, so the limit is set
+# below the GST-inclusive target (₹5,000 ÷ 1.18 ≈ ₹4,237 for prod).
 
-resource "aws_budgets_budget" "monthly" {
-  name         = "${var.name_prefix}-monthly"
-  budget_type  = "COST"
-  limit_amount = format("%.2f", var.limit_usd)
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
+data "google_project" "this" {}
 
-  dynamic "notification" {
-    for_each = var.actual_thresholds_percent
+resource "google_monitoring_notification_channel" "email" {
+  display_name = "${var.name_prefix} budget alerts"
+  type         = "email"
 
-    content {
-      comparison_operator        = "GREATER_THAN"
-      threshold                  = notification.value
-      threshold_type             = "PERCENTAGE"
-      notification_type          = "ACTUAL"
-      subscriber_email_addresses = [var.alert_email]
+  labels = {
+    email_address = var.alert_email
+  }
+}
+
+resource "google_billing_budget" "this" {
+  billing_account = var.billing_account_id
+  display_name    = "${var.name_prefix}-monthly"
+
+  budget_filter {
+    projects = ["projects/${data.google_project.this.number}"]
+  }
+
+  amount {
+    specified_amount {
+      currency_code = var.currency
+      units         = tostring(var.amount)
     }
   }
 
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 100
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.alert_email]
+  dynamic "threshold_rules" {
+    for_each = var.actual_thresholds
+    content {
+      threshold_percent = threshold_rules.value
+      spend_basis       = "CURRENT_SPEND"
+    }
+  }
+
+  threshold_rules {
+    threshold_percent = 1.0
+    spend_basis       = "FORECASTED_SPEND"
+  }
+
+  all_updates_rule {
+    monitoring_notification_channels = [google_monitoring_notification_channel.email.id]
   }
 }

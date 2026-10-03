@@ -1,77 +1,61 @@
 # infra/modules/network/main.tf
-# One VPC, one public subnet (entry node only) and two private subnets (Aurora needs 2 AZs).
-# No NAT gateway: nothing in the private subnets needs internet access
-# (Lambda runs outside the VPC and reaches Aurora through the RDS Data API).
+# One custom VPC with one subnet for the entry node. The node has NO external IP: it reaches
+# the internet (Tailscale) through Cloud NAT and Google APIs through Private Google Access.
+# Cloud Run and Firestore are serverless and need no subnet. No inbound rules except
+# optional SSH from Google's IAP range (admin access without a public IP).
 
-resource "aws_vpc" "this" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-
-  tags = { Name = "${var.name_prefix}-vpc" }
+resource "google_compute_network" "this" {
+  name                    = "${var.name_prefix}-vpc"
+  auto_create_subnetworks = false
+  routing_mode            = "REGIONAL"
 }
 
-# Lock down the default security group (no rules at all).
-resource "aws_default_security_group" "this" {
-  vpc_id = aws_vpc.this.id
-
-  tags = { Name = "${var.name_prefix}-default-sg-locked" }
+resource "google_compute_subnetwork" "node" {
+  name                     = "${var.name_prefix}-node"
+  network                  = google_compute_network.this.id
+  region                   = var.region
+  ip_cidr_range            = var.subnet_cidr
+  private_ip_google_access = true
 }
 
-resource "aws_internet_gateway" "this" {
-  vpc_id = aws_vpc.this.id
-
-  tags = { Name = "${var.name_prefix}-igw" }
+resource "google_compute_router" "this" {
+  name    = "${var.name_prefix}-router"
+  network = google_compute_network.this.id
+  region  = var.region
 }
 
-resource "aws_subnet" "public_a" {
-  vpc_id                  = aws_vpc.this.id
-  cidr_block              = var.public_subnet_cidr
-  availability_zone       = var.azs[0]
-  map_public_ip_on_launch = false # the entry node asks for its own egress-only public IP
+resource "google_compute_router_nat" "this" {
+  name                                = "${var.name_prefix}-nat"
+  router                              = google_compute_router.this.name
+  region                              = var.region
+  nat_ip_allocate_option              = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat  = "LIST_OF_SUBNETWORKS"
+  enable_endpoint_independent_mapping = true # helps Tailscale make direct (non-relayed) connections
 
-  tags = { Name = "${var.name_prefix}-public-a" }
-}
-
-resource "aws_subnet" "private" {
-  for_each = {
-    a = { cidr = var.private_subnet_cidrs[0], az = var.azs[0] }
-    b = { cidr = var.private_subnet_cidrs[1], az = var.azs[1] }
+  subnetwork {
+    name                    = google_compute_subnetwork.node.id
+    source_ip_ranges_to_nat = ["ALL_IP_RANGES"]
   }
 
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = each.value.cidr
-  availability_zone = each.value.az
-
-  tags = { Name = "${var.name_prefix}-private-${each.key}" }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.this.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.this.id
+  log_config {
+    enable = true
+    filter = "ERRORS_ONLY"
   }
-
-  tags = { Name = "${var.name_prefix}-public-rt" }
 }
 
-resource "aws_route_table_association" "public_a" {
-  subnet_id      = aws_subnet.public_a.id
-  route_table_id = aws_route_table.public.id
-}
+# Admin SSH only through IAP TCP forwarding (gcloud compute ssh --tunnel-through-iap).
+resource "google_compute_firewall" "iap_ssh" {
+  count = var.allow_iap_ssh ? 1 : 0
 
-# Private route table: local routes only (no internet route).
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.this.id
+  name          = "${var.name_prefix}-allow-iap-ssh"
+  network       = google_compute_network.this.id
+  direction     = "INGRESS"
+  priority      = 1000
+  source_ranges = ["35.235.240.0/20"] # Google IAP TCP forwarding range
+  target_tags   = [var.node_tag]
 
-  tags = { Name = "${var.name_prefix}-private-rt" }
-}
-
-resource "aws_route_table_association" "private" {
-  for_each = aws_subnet.private
-
-  subnet_id      = each.value.id
-  route_table_id = aws_route_table.private.id
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
 }
