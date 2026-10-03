@@ -15,6 +15,7 @@ infra/
 ├── envs/dev/             # dev root; values come from GitHub `dev` environment secrets
 ├── envs/prod/            # prod root (created, idle)
 ├── scripts/plan_env.py   # terraform plan → masked Markdown report for PRs (nothing applied)
+├── scripts/gcp_check.py  # read-only pre-flight: gcloud login, ADC, billing open/linked, APIs (exit 0 = ready)
 ├── modules/
 │   ├── network/          # custom VPC, one node subnet (Private Google Access), Cloud Router + NAT, IAP-SSH firewall
 │   ├── secrets/          # Secret Manager containers only (single region, CMEK) — values set outside Terraform
@@ -58,7 +59,8 @@ infra/
    ```
 3. **Enable Claude on Vertex AI** (⚠️ third-party terms and cost; needs open billing — this is why enablement fails today): Console → Vertex AI → Model Garden → search "Claude" → enable Claude Haiku 4.5 (and Sonnet 5 for prod) and accept Anthropic's terms. Model IDs used: `claude-haiku-4-5@20251001`, `claude-sonnet-5` (from Anthropic's Vertex docs, 2026-10-03).
 4. **Apply the tailnet policy**: copy [`tailscale/policy.hujson`](tailscale/policy.hujson) to `tailscale/policy.local.hujson` (git-ignored), replace `<OWNER_LOGIN>`, and paste it into the Tailscale admin console.
-5. **Local values:** copy `terraform.tfvars.example` → `terraform.tfvars` and `backend.hcl.example` → `backend.hcl` in `bootstrap/` and `envs/dev/`. Both copies are git-ignored. For CI, put the same values in the GitHub `dev` environment secrets.
+5. **Pre-flight check (read-only):** `python3 infra/scripts/gcp_check.py --project weekend2-0`. It must print `READY` before any plan or apply.
+6. **Local values:** copy `terraform.tfvars.example` → `terraform.tfvars` and `backend.hcl.example` → `backend.hcl` in `bootstrap/` and `envs/dev/`. Both copies are git-ignored. For CI, put the same values in the GitHub `dev` environment secrets.
 
 ## Dev run order
 ```bash
