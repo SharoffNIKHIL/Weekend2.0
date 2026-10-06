@@ -27,13 +27,14 @@ public class ChatController {
         this.agent = agent;
     }
 
-    public record ChatRequest(String conversationId, @NotBlank @Size(max = 8000) String message, Boolean thinkHarder) {}
+    public record ChatRequest(String conversationId, @NotBlank @Size(max = 8000) String message, Boolean thinkHarder,
+            @Size(max = 64) String agentId) {}
 
     public record ConfirmRequest(boolean approved) {}
 
     @PostMapping("/chat")
     public ChatResult chat(@Valid @RequestBody ChatRequest req) {
-        return agent.chat(req.conversationId(), req.message(), Boolean.TRUE.equals(req.thinkHarder()));
+        return agent.chat(req.conversationId(), req.message(), Boolean.TRUE.equals(req.thinkHarder()), req.agentId());
     }
 
     @GetMapping("/pending")

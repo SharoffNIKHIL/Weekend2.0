@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="58 36 396 440"><defs>
+  <linearGradient id="wk-shell" x1="0.15" y1="0" x2="0.85" y2="1"><stop offset="0" stop-color="#5C8DFF"/><stop offset=".5" stop-color="#1D5BFF"/><stop offset="1" stop-color="#0A2A8F"/></linearGradient>
+  <linearGradient id="wk-plate" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0" stop-color="#E8EEFF"/><stop offset=".55" stop-color="#A9C1FF"/><stop offset="1" stop-color="#6E9BFF"/></linearGradient>
+  <radialGradient id="wk-eye" cx=".5" cy=".45" r=".65"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#D4F6FF"/><stop offset="1" stop-color="#4CCBFF"/></radialGradient>
+  <radialGradient id="wk-ear" cx=".35" cy=".35" r=".8"><stop offset="0" stop-color="#4F82FF"/><stop offset="1" stop-color="#0A2A8F"/></radialGradient>
+  <filter id="wk-glow" x="-50%" y="-120%" width="200%" height="340%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="wk-drop" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#0A1B52" flood-opacity=".35"/></filter>
+</defs>
+<g filter="url(#wk-drop)" stroke="#0A1F66" stroke-linejoin="round" stroke-linecap="round">
+  <circle cx="102" cy="254" r="26" fill="url(#wk-ear)" stroke-width="10"/>
+  <circle cx="410" cy="254" r="26" fill="url(#wk-ear)" stroke-width="10"/>
+  <path d="M256 52C156 52 100 112 100 206c0 62 8 112 32 154l44 72c20 30 140 30 160 0l44-72c24-42 32-92 32-154C412 112 356 52 256 52z" fill="url(#wk-shell)" stroke-width="12"/>
+  <path d="M256 60v86" fill="none" stroke="#A9C1FF" stroke-width="10" opacity=".55"/>
+  <path d="M256 150c44 0 86 10 104 26 10 38 8 86-4 124l-22 70-34 50h-88l-34-50-22-70c-12-38-14-86-4-124 18-16 60-26 104-26z" fill="url(#wk-plate)" stroke-width="10"/>
+  <path d="M170 214c30-12 60-16 86-16s56 4 86 16" fill="none" stroke-width="7" opacity=".5"/>
+  <path d="M178 312l36 22M334 312l-36 22" fill="none" stroke-width="7" opacity=".45"/>
+  <g filter="url(#wk-glow)" stroke="none">
+    <path d="M172 240c22-12 54-12 74 0 0 12-4 22-12 28-24 0-48-6-60-16z" fill="url(#wk-eye)"/>
+    <path d="M340 240c-22-12-54-12-74 0 0 12 4 22 12 28 24 0 48-6 60-16z" fill="url(#wk-eye)"/>
+  </g>
+  <path d="M218 368l14 30 24-22 24 22 14-30" fill="none" stroke-width="11"/>
+  <path d="M146 150c16-44 56-74 100-82" fill="none" stroke="#FFFFFF" stroke-width="18" opacity=".55"/>
+  <ellipse cx="222" cy="172" rx="30" ry="9" fill="#FFFFFF" stroke="none" opacity=".75" transform="rotate(-6 222 172)"/>
+</g></svg>

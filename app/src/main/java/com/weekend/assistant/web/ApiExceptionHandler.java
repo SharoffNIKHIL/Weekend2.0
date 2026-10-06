@@ -23,6 +23,13 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", "malformed JSON"));
     }
 
+    /** Our validators throw these with field-level messages that never contain request content. */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> badInput(IllegalArgumentException e) {
+        String msg = e.getMessage() == null ? "invalid request" : e.getMessage();
+        return ResponseEntity.badRequest().body(Map.of("error", msg.length() > 200 ? "invalid request" : msg));
+    }
+
     @ExceptionHandler(CostCapExceededException.class)
     public ResponseEntity<Map<String, String>> costCap(CostCapExceededException e) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("error", e.getMessage()));

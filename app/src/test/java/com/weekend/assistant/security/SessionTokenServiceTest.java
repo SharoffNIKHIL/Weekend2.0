@@ -33,14 +33,16 @@ class SessionTokenServiceTest {
 
         WeekendProperties other = new WeekendProperties(TestFixtures.props().ownerTimezone(), TestFixtures.props().llm(),
                 TestFixtures.props().agent(), TestFixtures.props().retention(),
-                new WeekendProperties.Security("a-completely-different-key-0123456789", Duration.ofHours(12), true));
+                new WeekendProperties.Security("a-completely-different-key-0123456789", Duration.ofHours(12), true),
+                TestFixtures.props().agents());
         assertThat(new SessionTokenService(other, clock).verify(t)).isEmpty();
     }
 
     @Test
     void failsClosedWithoutAStrongKey() {
         WeekendProperties weak = new WeekendProperties("Asia/Kolkata", TestFixtures.props().llm(), TestFixtures.props().agent(),
-                TestFixtures.props().retention(), new WeekendProperties.Security("short", Duration.ofHours(1), true));
+                TestFixtures.props().retention(), new WeekendProperties.Security("short", Duration.ofHours(1), true),
+                TestFixtures.props().agents());
         assertThatThrownBy(() -> new SessionTokenService(weak, clock)).isInstanceOf(IllegalStateException.class);
     }
 }

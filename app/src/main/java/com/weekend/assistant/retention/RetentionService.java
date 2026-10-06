@@ -1,6 +1,8 @@
 package com.weekend.assistant.retention;
 
 import com.weekend.assistant.config.WeekendProperties;
+import com.weekend.assistant.inbox.InboxService;
+import com.weekend.assistant.inbox.NotificationService;
 import com.weekend.assistant.port.AuditLog;
 import com.weekend.assistant.port.MemoryRepository;
 import com.weekend.assistant.port.MessageRepository;
@@ -16,12 +18,16 @@ public class RetentionService {
     private final MessageRepository messages;
     private final MemoryRepository memories;
     private final ToolCallRepository toolCalls;
+    private final NotificationService notifications;
+    private final InboxService inbox;
     private final AuditLog audit;
     private final WeekendProperties props;
     private final Clock clock;
 
     public RetentionService(MessageRepository messages, MemoryRepository memories, ToolCallRepository toolCalls,
-            AuditLog audit, WeekendProperties props, Clock clock) {
+            NotificationService notifications, InboxService inbox, AuditLog audit, WeekendProperties props, Clock clock) {
+        this.notifications = notifications;
+        this.inbox = inbox;
         this.messages = messages;
         this.memories = memories;
         this.toolCalls = toolCalls;
@@ -35,9 +41,13 @@ public class RetentionService {
         int msgs = messages.deleteOlderThan(now.minus(props.retention().messages()));
         int mems = memories.deleteExpired(now);
         int calls = toolCalls.deleteOlderThan(now.minus(props.retention().toolCalls()));
-        audit.append("system", "retention.run", "messages=" + msgs + ",memories=" + mems + ",toolCalls=" + calls);
-        return new RetentionReport(msgs, mems, calls);
+        int notes = notifications.deleteOlderThan(now.minus(props.retention().notifications()));
+        int inboxMsgs = inbox.deleteOlderThan(now.minus(props.retention().inboxMessages()));
+        audit.append("system", "retention.run", "messages=" + msgs + ",memories=" + mems + ",toolCalls=" + calls
+                + ",notifications=" + notes + ",inboxMessages=" + inboxMsgs);
+        return new RetentionReport(msgs, mems, calls, notes, inboxMsgs);
     }
 
-    public record RetentionReport(int messagesDeleted, int memoriesDeleted, int toolCallsDeleted) {}
+    public record RetentionReport(int messagesDeleted, int memoriesDeleted, int toolCallsDeleted,
+            int notificationsDeleted, int inboxMessagesDeleted) {}
 }
