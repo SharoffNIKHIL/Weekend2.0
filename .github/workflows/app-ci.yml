@@ -1,5 +1,6 @@
-# .github/workflows/app-ci.yml — Application CI: test (JUnit, 40+) → package → Docker image build (no push)
-# on every PR that touches app/. Deployment is app-cd.yml.
+# .github/workflows/app-ci.yml — Application CI on every PR that touches app/: JUnit (unit + HTTP + real-port
+# integration) → browser end-to-end tests of the PWA (headless Chrome against the loopback `local,ui` preview env)
+# → Docker image build (no push). Deployment is app-cd.yml.
 name: app-ci
 
 on:
@@ -35,6 +36,49 @@ jobs:
         with:
           name: surefire-reports
           path: app/target/surefire-reports
+
+  ui-e2e:
+    needs: build-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Package
+        run: mvn -B -DskipTests package
+
+      - name: Start the UI preview env (loopback, offline model, demo data)
+        run: |
+          set -euo pipefail
+          nohup java -jar target/weekend-assistant.jar --spring.profiles.active=local,ui > ui.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8081/healthz && exit 0; sleep 1; done
+          cat ui.log; exit 1
+
+      - name: Browser end-to-end tests
+        env:
+          SHOTS_DIR: ${{ github.workspace }}/app/e2e-shots
+        run: node src/test/e2e/ui.e2e.mjs
+
+      - name: Upload screenshots and server log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-e2e
+          path: |
+            app/e2e-shots
+            app/ui.log
 
   image:
     needs: build-test

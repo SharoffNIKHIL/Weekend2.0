@@ -14,6 +14,7 @@ Newest first. Every change to this document adds a row here. Feature releases ha
 
 | Doc version | Date (IST) | Type | Summary | Sections changed |
 |---|---|---|---|---|
+| 0.5.0 | 2026-10-06 | Minor | **UI v3 and agents.** Home (category tiles, folders, up next); tasks, folders, approvals queue, payments (tracking only, never pays, card numbers refused), agent messages, in-app notifications (P5: 30 days; messages 365 days; P6 export/delete-all cover all of it). Agents: built-in, custom (owner instructions after the fixed rules + conditions), a config agent reading the owner's CLAUDE.md, remote agents over weekend-agent/1 (🔓 every message needs approval; allow-listed hosts only; inbound token stored as a hash). Brand: one colour (Electric Blue #1D5BFF) and an original helmet mascot (Marvel's Iron Man design not used: trademark/copyright, public repo). Browser E2E tests in CI | 13, 15 |
 | 0.4.0 | 2026-10-03 | Major | **D2 decided: Claude on Vertex AI (global)**; data exit accepted; **copy of every LLM exchange kept in Firestore asia-south1** (new requirement). CI/CD built: infra-ci (fmt, tflint, plan → PR), infra-cd (apply -auto-approve, free resources only, owner-approved), app-ci, app-cd. One generic Terraform root (`infra/stack`); env values on env branches; short-lived credentials (deployer impersonation, no keys). Stale FastAPI references corrected to Spring Boot | Header, 5.2, 5.3, 6, 7.3, 7.4, 18 |
 | 0.3.0 | 2026-10-03 | Minor | **Application language: Java 17 + Spring Boot 4.1** (owner's choice; replaces the Python/FastAPI plan). Application core built on `Feature_code` (`app/`): agent loop, tool plugins, memory, reminders, retention, P6 export/delete, signed sessions, PWA UI | 7.2, 18 |
 | 0.2.1 | 2026-10-03 | Patch | Dev is **free by default**: CMEK, entry node and NAT are switches that default to off ("on hold"); dev project `weekend2-0` created; billing account found closed | 21.4 |
@@ -557,6 +558,9 @@ class ToolSpec:
     timeout_s: int = 15
 ```
 
+### 13.2a Agents (built 2026-10-06)
+Besides tools, the owner can pick an **agent** per chat: Weekend (built in), **custom** agents (owner instructions appended *after* the fixed rules, plus conditions: allowed tools, confirm every tool, think harder, max steps), including one loaded from the owner's CLAUDE.md, and **remote** agents reached over HTTPS (`weekend-agent/1`). Remote calls are a 🔓 data exit: allow-listed hosts only (`WEEKEND_AGENT_ALLOWED_HOSTS`, empty by default), every message needs the owner's yes, and replies are DATA. Built tools: `current_time`, `memory_search`, `memory_save`, `reminder_create`, `task_list`, `task_create`, `agent_delegate`.
+
 ### 13.3 v1 tool set
 | Tool | writes | Purpose |
 |---|---|---|
@@ -629,6 +633,8 @@ Two locks. **Lock 1 (device):** the server is only reachable from devices on you
 | Voice-only (Siri Shortcut → API) | Hands-free | Limited UI | OK |
 
 **PROVISIONAL recommendation:** PWA (`PROVISIONAL — depends on D1, D6`). Add a Siri Shortcut later as a voice shortcut.
+
+**Built (UI v3, 2026-10-06):** Home (category tiles · folders · up next) · Chat (agent picker) · Agents · Tasks · Reminders · Approvals · Payments · Messages · Notifications · Memories · Settings (export, delete-all). See `app/README.md` and `docs/ui/`.
 
 **Planned screens (v1):** Login (passkey) · Chat (text + hold-to-talk) · Memories (list, edit, pin, delete) · Reminders · Connectors (connect, revoke) · Settings (retention, model routing, budget) · Export and delete-all.
 

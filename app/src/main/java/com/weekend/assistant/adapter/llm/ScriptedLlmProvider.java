@@ -8,7 +8,8 @@ import java.util.Map;
 /**
  * Deterministic, offline LLM for local runs and tests (weekend.llm.provider=local). No data leaves
  * the machine. It recognises a few intents so the agent loop and tools can be exercised end to end:
- * "time"/"date" → current_time, "what do you know about X" → memory_search, "remind me" → reminder_create.
+ * "time"/"date" → current_time, "what do you know about X" → memory_search, "remind me" → reminder_create,
+ * "add task X" → task_create, "list my tasks" → task_list, "delegate to <agent_id>: X" → agent_delegate.
  */
 public class ScriptedLlmProvider implements LlmProvider {
 
@@ -21,6 +22,17 @@ public class ScriptedLlmProvider implements LlmProvider {
         }
         String text = last instanceof UserText u ? u.text() : "";
         String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("add task ")) {
+            return tool("task_create", Map.of("title", text.substring("add task ".length())));
+        }
+        if (lower.startsWith("list my tasks") || lower.startsWith("what are my tasks")) {
+            return tool("task_list", Map.of());
+        }
+        if (lower.startsWith("delegate to ") && text.indexOf(':') > "delegate to ".length()) {
+            int colon = text.indexOf(':');
+            return tool("agent_delegate", Map.of("agent_id", text.substring("delegate to ".length(), colon).strip(),
+                    "message", text.substring(colon + 1).strip()));
+        }
         if (lower.contains("time") || lower.contains("date")) {
             return tool("current_time", Map.of());
         }

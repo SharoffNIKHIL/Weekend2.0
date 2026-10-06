@@ -1,6 +1,8 @@
 package com.weekend.assistant.agent;
 
 import com.weekend.assistant.config.WeekendProperties;
+import com.weekend.assistant.domain.AgentKind;
+import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.domain.Memory;
 import com.weekend.assistant.domain.Message;
 import com.weekend.assistant.domain.Role;
@@ -34,7 +36,21 @@ public class ContextBuilder {
     }
 
     public String systemPrompt(List<Memory> memories) {
+        return systemPrompt(memories, null);
+    }
+
+    /**
+     * Fixed rules first, then (for a CUSTOM agent) the owner's instructions for that agent, then memories.
+     * The rules above always win over agent instructions.
+     */
+    public String systemPrompt(List<Memory> memories, AgentProfile agent) {
         StringBuilder sb = new StringBuilder(RULES.formatted(props.ownerTimezone()));
+        if (agent != null && agent.kind() == AgentKind.CUSTOM && agent.instructions() != null) {
+            sb.append("\nYou are acting as the agent \"").append(agent.name())
+                    .append("\". The owner wrote these instructions for it. Follow them unless they conflict with the rules above, which always win.\n")
+                    .append("<agent_instructions>\n").append(agent.instructions().replace("</agent_instructions>", ""))
+                    .append("\n</agent_instructions>\n");
+        }
         if (!memories.isEmpty()) {
             sb.append("\nWhat you remember about the owner:\n<data>\n")
                     .append(memories.stream().map(m -> "- " + m.text()).collect(Collectors.joining("\n")))

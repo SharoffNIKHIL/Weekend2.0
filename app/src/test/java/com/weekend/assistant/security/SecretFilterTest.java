@@ -41,4 +41,24 @@ class SecretFilterTest {
         assertThat(filter.containsSecret(null)).isFalse();
         assertThat(filter.redact(null)).isNull();
     }
+
+    @Test
+    void detectsAndRedactsLuhnValidCardNumbersOnly() {
+        SecretFilter f = new SecretFilter();
+        assertThat(f.containsSecret("card 4111 1111 1111 1111 exp 12/29")).isTrue();
+        assertThat(f.containsSecret("card 4111-1111-1111-1111")).isTrue();
+        assertThat(f.redact("pay with 4111111111111111 now")).isEqualTo("pay with [REDACTED] now");
+        assertThat(f.containsSecret("order 1234567812345678")).isFalse();   // fails Luhn
+        assertThat(f.containsSecret("call +91 98450 12345")).isFalse();     // too short
+        assertThat(f.redact("amount 25000.46 on 2026-10-15")).isEqualTo("amount 25000.46 on 2026-10-15");
+    }
+
+    @Test
+    void credentialCheckIgnoresTheKeywordHeuristic() {
+        SecretFilter f = new SecretFilter();
+        assertThat(f.containsSecret("If the owner pastes a secret: do not repeat it")).isTrue();
+        assertThat(f.containsCredential("If the owner pastes a secret: do not repeat it")).isFalse();
+        assertThat(f.containsCredential("key AKIAABCDEFGHIJKLMNOP")).isTrue();
+        assertThat(f.containsCredential("4111 1111 1111 1111")).isTrue();
+    }
 }

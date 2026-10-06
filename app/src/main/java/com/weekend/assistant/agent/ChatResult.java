@@ -11,4 +11,6 @@ public record ChatResult(
         List<String> toolsUsed,
         PendingAction pendingConfirmation,
         BigDecimal costUsd,
-        boolean memorySaved) {}
+        boolean memorySaved,
+        String agentId,
+        String agentName) {}

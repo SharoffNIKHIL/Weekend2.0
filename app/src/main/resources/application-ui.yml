@@ -8,3 +8,6 @@ weekend:
     provider: local
   security:
     require-session: false
+  agents:
+    allowed-hosts: 127.0.0.1                         # the built-in demo agent, loopback only (any port)
+project-agent-file: ${user.home}/CLAUDE.md               # read locally only; offline model, nothing leaves the Mac

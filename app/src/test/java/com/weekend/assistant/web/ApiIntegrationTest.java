@@ -65,7 +65,7 @@ class ApiIntegrationTest {
 
     @Test
     void servesTheUi() throws Exception {
-        for (String asset : new String[] {"/index.html", "/app.js", "/theme.js", "/styles.css", "/sw.js", "/icon.svg"}) {
+        for (String asset : new String[] {"/index.html", "/app.js", "/theme.js", "/styles.css", "/sw.js", "/icon.svg", "/logo.svg"}) {
             mvc.perform(get(asset)).andExpect(status().isOk());
         }
     }

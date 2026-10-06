@@ -30,7 +30,23 @@ mvn spring-boot:run -Dspring-boot.run.profiles=local,ui
 ```
 The `ui` profile seeds made-up demo memories and reminders (in memory only, gone on restart) so every screen can be reviewed populated. It refuses to start unless the offline model is active and sessions are off, so it can never run against real data. Deep links: `#chat`, `#memories`, `#reminders`, `#settings`. Screenshots: [`docs/ui/`](../docs/ui/).
 
-UI v2 (`resources/static/`): sidebar on desktop, bottom tab bar on phones; light/dark/auto theme; chat with suggestions, model/tool/cost tags (₹ at the tracker FX) and inline confirmation cards; searchable memories with kind and expiry; reminders grouped Upcoming / Done (IST); Settings shows the model, where prompts are processed (🔓 flag when outside India), retention, export and delete-all. No third-party scripts, fonts or icons.
+**UI v3** (`resources/static/`), one brand colour (Electric Blue `#1D5BFF`, WCAG AA with white text; `#6E9BFF` in dark mode) and an original armoured-helmet mascot (`logo.svg`, `icon.svg`):
+- **Home:** greeting, quick ask, six category tiles (Reminders, Tasks, Approvals, Payments, Messages, Notifications) with live counts, folder icons that preview up to four items each, and "Up next".
+- **Folders** group tasks and reminders (`#folder/<id>`). Deleting a folder keeps its items.
+- **Tasks, Reminders, Approvals, Payments, Messages, Notifications, Memories, Settings** screens; sidebar on desktop, five-tab bottom bar on phones; light/dark/auto.
+- **Agents:** pick who answers in Chat, view an agent's instructions, set its conditions, create your own, or connect a remote agent.
+- **Payments are tracking only.** Weekend never moves money and refuses card numbers (Luhn-checked).
+
+The `ui` profile also loads the **Project agent** from `~/CLAUDE.md` (override with `WEEKEND_PROJECT_AGENT_INSTRUCTIONS`) and connects a loopback **Demo agent** (`/demo-agent`), so remote-agent chat can be tried without anything leaving the Mac. Screenshots: [`docs/ui/`](../docs/ui/).
+
+## Agents
+| Kind | What it is | Safety |
+|---|---|---|
+| Built in | Weekend itself, the default | Write tools wait for your yes |
+| Custom | Your instructions + conditions on the same model; from config (e.g. CLAUDE.md, read at start-up, never committed, max 64 KiB, refused if it contains credentials) or created in the app | Instructions are added *after* the fixed safety rules, which always win. Conditions: allowed tools, "every action waits for my yes", always think harder, max tool steps (≤ 10) |
+| Remote | Another agent over HTTPS, protocol **weekend-agent/1**: `POST <endpoint>/message {"message","conversationId","from":"weekend"}` → `{"reply"}`, `GET <endpoint>/health` | 🔓 Every message waits for your yes. Host must be on `WEEKEND_AGENT_ALLOWED_HOSTS` (empty by default; adding one is a security checkpoint). https only (http on loopback), no redirects, 20 s timeout, 64 KiB reply cap, secrets redacted before sending; replies are DATA |
+
+Inbound: a remote agent gets a one-time token at connect time (Weekend keeps only its SHA-256) and posts to `POST /agent-inbox` with `Authorization: Bearer <token>` and `{"subject","body"}` → Messages. Max 60 per agent per hour; deleting the agent revokes the token. On Cloud Run this path is only reachable through the private network (internal ingress + tailnet). A2A-protocol support is a possible later adapter (`Not verified` against the current A2A spec).
 
 ## Configuration (environment variables)
 | Variable | Default | Meaning |
@@ -87,12 +103,25 @@ Implement `tools.Tool` as a Spring `@Component`: give it a `name()` (`^[a-z][a-z
 | GET / DELETE | `/api/reminders`, `/api/reminders/{id}` | List / cancel reminders |
 | GET / POST | `/api/export`, `/api/delete-all` | Export everything; delete all with `{"confirmation":"DELETE ALL MY DATA"}` |
 | POST | `/jobs/retention`, `/jobs/export`, `/jobs/reminders/{id}/deliver` | Worker jobs (Cloud Scheduler / Cloud Tasks; IAM-protected on Cloud Run) |
+| GET | `/api/home` | Category counts, folder summaries (with previews), next 5 due items |
+| GET / POST / PUT / DELETE | `/api/folders`, `/api/folders/{id}`, `/api/folders/icons` | Folders for tasks and reminders |
+| GET / POST / DELETE | `/api/tasks`, `/api/tasks/{id}/complete`, `/reopen`, `PUT /api/tasks/{id}/folder` | Tasks (`dueLocal` = IST local time) |
+| POST / PUT | `/api/reminders`, `/api/reminders/{id}/folder` | Owner-created reminders, move between folders |
+| GET / POST | `/api/approvals`, `/api/approvals/{tool\|payment}/{id}` | One queue for tool calls and payments waiting on you |
+| GET / POST / DELETE | `/api/payments`, `/api/payments/{id}/decision`, `/paid` | Payment tracking (never pays) |
+| GET / POST / DELETE | `/api/messages`, `/api/notifications`, `/read`, `/read-all` | Agent messages and in-app notifications |
+| GET / POST / PUT / DELETE | `/api/agents`, `/custom`, `/remote`, `/{id}/instructions`, `/{id}/conditions`, `/{id}/test` | Agents; `POST /api/chat` takes `agentId` |
+| POST | `/agent-inbox` | Inbound messages from connected agents (agent token, not the owner session) |
 | GET | `/api/info` | Non-secret settings for the Settings screen: models, processing location, retention, cost cap |
 | GET | `/healthz` | Liveness |
 
 ## Testing
 ```bash
-cd app && mvn -B verify     # 43 tests: unit + full HTTP integration (offline, no cloud)
+cd app && mvn -B verify     # 117 JUnit tests: unit, HTTP integration (sessions on), real-port end to end (offline, no cloud)
+
+# Browser end-to-end (20 tests, headless Chrome, Node 22+, no npm packages):
+java -jar target/weekend-assistant.jar --spring.profiles.active=local,ui &   # loopback preview env
+node src/test/e2e/ui.e2e.mjs                                                 # SHOTS_DIR=… saves screenshots
 ```
 Covered: secret detection and redaction, session tokens (tamper, expiry, fail-closed), audit-chain tamper detection, tool registry rules, routing and cost, the agent loop (read tool, write-tool confirmation, decline, step limit, unknown tool, cost cap), memory (secrets rejected, explicit extraction, pin, retention), retention, export/delete-all, the Vertex SDK message mapping, and the HTTP API (401 without a session, validation, UI served).
 
