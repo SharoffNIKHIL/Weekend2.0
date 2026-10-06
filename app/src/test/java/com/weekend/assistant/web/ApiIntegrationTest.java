@@ -54,7 +54,19 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void infoNeedsASessionAndHoldsNoIdentifiers() throws Exception {
+        mvc.perform(get("/api/info")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/info").header("Authorization", bearer())).andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("local"))
+                .andExpect(jsonPath("$.retentionDays.messages").value(365))
+                .andExpect(jsonPath("$.gcpProject").doesNotExist())
+                .andExpect(jsonPath("$.sessionKey").doesNotExist());
+    }
+
+    @Test
     void servesTheUi() throws Exception {
-        mvc.perform(get("/index.html")).andExpect(status().isOk());
+        for (String asset : new String[] {"/index.html", "/app.js", "/theme.js", "/styles.css", "/sw.js", "/icon.svg"}) {
+            mvc.perform(get(asset)).andExpect(status().isOk());
+        }
     }
 }

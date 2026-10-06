@@ -1,0 +1,10 @@
+# app/src/main/resources/application-ui.yml — UI preview env: `mvn spring-boot:run -Dspring-boot.run.profiles=local,ui`
+# Loopback only, offline model, no session, made-up demo data (UiPreviewSeeder). Never use on Cloud Run.
+server:
+  address: 127.0.0.1
+  port: ${PORT:8081}
+weekend:
+  llm:
+    provider: local
+  security:
+    require-session: false

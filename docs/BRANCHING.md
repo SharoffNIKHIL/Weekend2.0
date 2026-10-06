@@ -29,7 +29,8 @@ main  ──●────────────●────────�
 |---|---|---|---|
 | 1 | `feature_infra` | Terraform for GCP, CI, plan tooling | ✅ Merged (PR #2), branch removed |
 | 2 | `Feature_code` | Java application core, PWA, in-memory adapters | ✅ Merged (PR #3, 2026-10-03); branch kept |
-| 2b | `feature_cicd` | Generic `infra/stack`, env values files, deployer SA, CI/CD pipelines, short-lived credentials | ✅ Merged into `dev` 2026-10-03 |
+| 2b | `feature_cicd` | Generic `infra/stack`, env values files, deployer SA, CI/CD pipelines, short-lived credentials | ✅ Merged (PR #4, 2026-10-06, after tflint fix) |
+| 2c | `feature_UI` | PWA redesign (UI v2), `/api/info`, `ui` preview env (`local,ui` profiles, demo data, loopback) | 🟡 In progress (2026-10-06) |
 | 3 | `Feature_database` | Firestore adapters, vector index, **copy of every LLM exchange (D2)**, export to GCS | ⚪ Next |
 | 4 | `Feature_networking` | Entry-node ID-token proxy, Cloud Tasks reminders | ⚪ |
 | 5 | `Feature_final` | End-to-end tests on dev GCP, release to `main` | ⚪ |

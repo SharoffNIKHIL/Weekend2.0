@@ -3,74 +3,235 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1f3864">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e0f13" media="(prefers-color-scheme: dark)">
   <meta name="referrer" content="no-referrer">
   <title>Weekend</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
+  <script src="theme.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <h1 class="brand">Weekend</h1>
-    <nav class="tabs" role="tablist" aria-label="Sections">
-      <button role="tab" aria-selected="true" data-tab="chat" id="tab-chat">Chat</button>
-      <button role="tab" aria-selected="false" data-tab="memories" id="tab-memories">Memories</button>
-      <button role="tab" aria-selected="false" data-tab="reminders" id="tab-reminders">Reminders</button>
-      <button role="tab" aria-selected="false" data-tab="data" id="tab-data">Data</button>
-    </nav>
-  </header>
+  <!-- Icon sprite: drawn in-house, no third-party assets (nothing leaves this origin). -->
+  <svg width="0" height="0" class="sprite" aria-hidden="true">
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 3 8 3 8H3s3-2 3-8"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16v4M17 18h4"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></symbol>
+  </svg>
 
-  <main>
-    <section id="panel-chat" class="panel" role="tabpanel" aria-labelledby="tab-chat">
-      <ol id="messages" class="messages" aria-live="polite" aria-label="Conversation"></ol>
-      <div id="pending" class="pending" hidden>
-        <p id="pending-text"></p>
-        <div class="row">
-          <button id="pending-yes" class="primary">Yes, do it</button>
-          <button id="pending-no">No</button>
-        </div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="icon.svg" alt="" width="34" height="34">
+        <div><strong>Weekend</strong><span>Private assistant</span></div>
       </div>
-      <form id="composer" class="composer" autocomplete="off">
-        <label class="sr-only" for="input">Message</label>
-        <textarea id="input" rows="1" maxlength="8000" placeholder="Ask Weekend…" required></textarea>
-        <label class="toggle" title="Use the stronger model">
-          <input type="checkbox" id="think"> <span>Think harder</span>
-        </label>
-        <button type="submit" class="primary" id="send">Send</button>
-      </form>
-    </section>
+      <nav class="nav" aria-label="Sections">
+        <button data-view="chat" aria-current="page"><svg class="ic"><use href="#i-chat"/></svg><span>Chat</span></button>
+        <button data-view="memories"><svg class="ic"><use href="#i-memory"/></svg><span>Memories</span><b class="count" id="count-memories" hidden></b></button>
+        <button data-view="reminders"><svg class="ic"><use href="#i-bell"/></svg><span>Reminders</span><b class="count" id="count-reminders" hidden></b></button>
+        <button data-view="settings"><svg class="ic"><use href="#i-settings"/></svg><span>Settings</span></button>
+      </nav>
+      <div class="side-foot">
+        <div class="status" id="status"><i></i><span>Connecting…</span></div>
+        <p class="side-note"><svg class="ic sm"><use href="#i-lock"/></svg> Only you can sign in. Your data stays in your Google Cloud project.</p>
+      </div>
+    </aside>
 
-    <section id="panel-memories" class="panel" role="tabpanel" aria-labelledby="tab-memories" hidden>
-      <p class="hint">Everything Weekend remembers. Pinned memories never expire; unpinned ones expire after 180 days unused.</p>
-      <ul id="memory-list" class="list"></ul>
-    </section>
+    <main>
+      <!-- Chat -->
+      <section class="view" id="view-chat" aria-labelledby="h-chat">
+        <header class="view-head">
+          <div>
+            <h1 id="h-chat">Chat</h1>
+            <p class="sub" id="chat-sub">Ask anything. Write actions always wait for your yes.</p>
+          </div>
+          <div class="head-actions">
+            <span class="cost-pill" id="cost-pill" title="Model cost in this tab" hidden></span>
+            <button class="btn ghost" id="new-chat"><svg class="ic"><use href="#i-plus"/></svg><span>New chat</span></button>
+          </div>
+        </header>
+        <div class="view-body" id="chat-scroll">
+          <div class="inner">
+            <div class="empty-chat" id="empty-chat">
+              <div class="hello-mark"><img src="icon.svg" alt="" width="56" height="56"></div>
+              <h2 id="greeting">Hello</h2>
+              <p>I can answer questions, remember things you tell me, and set reminders. Anything that changes data waits for your confirmation.</p>
+              <div class="chips" id="suggestions">
+                <button class="chip" data-prompt="What time is it?"><svg class="ic sm"><use href="#i-clock"/></svg>What time is it?</button>
+                <button class="chip" data-prompt="Remember that I prefer filter coffee"><svg class="ic sm"><use href="#i-memory"/></svg>Remember that I prefer filter coffee</button>
+                <button class="chip" data-prompt="What do you know about coffee"><svg class="ic sm"><use href="#i-search"/></svg>What do you know about coffee</button>
+                <button class="chip" data-prompt="Remind me to rotate the staging key"><svg class="ic sm"><use href="#i-bell"/></svg>Remind me to rotate the staging key</button>
+              </div>
+            </div>
+            <ol id="messages" class="messages" aria-live="polite" aria-label="Conversation"></ol>
+          </div>
+        </div>
+        <footer class="composer-wrap">
+          <div class="inner">
+            <form id="composer" class="composer" autocomplete="off">
+              <label class="sr-only" for="input">Message</label>
+              <textarea id="input" rows="1" maxlength="8000" placeholder="Message Weekend…" required></textarea>
+              <div class="composer-bar">
+                <label class="think" title="Route this message to the stronger model">
+                  <input type="checkbox" id="think">
+                  <span><svg class="ic sm"><use href="#i-sparkle"/></svg>Think harder</span>
+                </label>
+                <span class="kbd-hint">Enter to send · Shift+Enter for a new line</span>
+                <button type="submit" class="send" id="send" aria-label="Send"><svg class="ic"><use href="#i-send"/></svg></button>
+              </div>
+            </form>
+          </div>
+        </footer>
+      </section>
 
-    <section id="panel-reminders" class="panel" role="tabpanel" aria-labelledby="tab-reminders" hidden>
-      <p class="hint">Ask in chat, e.g. "remind me to rotate the staging key on 15 Oct at 9am". You confirm before it's saved.</p>
-      <ul id="reminder-list" class="list"></ul>
-    </section>
+      <!-- Memories -->
+      <section class="view" id="view-memories" aria-labelledby="h-memories" hidden>
+        <header class="view-head">
+          <div>
+            <h1 id="h-memories">Memories</h1>
+            <p class="sub">Pinned memories are kept until you delete them. Others expire after <span data-ret="unpinnedMemories">180</span> days unused.</p>
+          </div>
+        </header>
+        <div class="view-body">
+          <div class="inner wide">
+            <div class="toolbar">
+              <label class="search">
+                <svg class="ic sm"><use href="#i-search"/></svg>
+                <span class="sr-only">Search memories</span>
+                <input id="memory-search" type="search" placeholder="Search memories">
+              </label>
+              <div class="segmented" id="memory-filter" role="group" aria-label="Filter">
+                <button data-filter="all" aria-pressed="true">All</button>
+                <button data-filter="pinned" aria-pressed="false">Pinned</button>
+                <button data-filter="FACT" aria-pressed="false">Facts</button>
+                <button data-filter="PREFERENCE" aria-pressed="false">Preferences</button>
+                <button data-filter="TASK" aria-pressed="false">Tasks</button>
+              </div>
+            </div>
+            <ul id="memory-list" class="cards"></ul>
+          </div>
+        </div>
+      </section>
 
-    <section id="panel-data" class="panel" role="tabpanel" aria-labelledby="tab-data" hidden>
-      <h2>Your data</h2>
-      <p class="hint">Download everything Weekend holds about you, or delete it all permanently.</p>
-      <button id="export" class="primary">Download export (JSON)</button>
-      <form id="delete-form" class="danger-zone">
-        <label for="delete-phrase">To delete everything, type <strong>DELETE ALL MY DATA</strong></label>
-        <input id="delete-phrase" autocomplete="off">
-        <button type="submit" class="danger">Delete all my data</button>
-      </form>
-      <h2>Session</h2>
-      <p class="hint">Until passkey login ships (Phase 2), paste your session token here. It stays in this tab only.</p>
-      <form id="token-form" class="row">
-        <label class="sr-only" for="token">Session token</label>
-        <input id="token" type="password" autocomplete="off" placeholder="Session token">
-        <button type="submit">Save</button>
-      </form>
-    </section>
-  </main>
+      <!-- Reminders -->
+      <section class="view" id="view-reminders" aria-labelledby="h-reminders" hidden>
+        <header class="view-head">
+          <div>
+            <h1 id="h-reminders">Reminders</h1>
+            <p class="sub">Ask in chat, e.g. "remind me to rotate the staging key on 15 Oct at 9 am". Times are IST.</p>
+          </div>
+        </header>
+        <div class="view-body">
+          <div class="inner">
+            <h2 class="section-title">Upcoming</h2>
+            <ul id="reminders-upcoming" class="rows"></ul>
+            <h2 class="section-title">Done and cancelled</h2>
+            <ul id="reminders-past" class="rows"></ul>
+          </div>
+        </div>
+      </section>
 
-  <div id="toast" class="toast" role="status" hidden></div>
+      <!-- Settings -->
+      <section class="view" id="view-settings" aria-labelledby="h-settings" hidden>
+        <header class="view-head">
+          <div>
+            <h1 id="h-settings">Settings</h1>
+            <p class="sub">Session, privacy, appearance and your data.</p>
+          </div>
+        </header>
+        <div class="view-body">
+          <div class="inner settings">
+            <article class="card">
+              <h2><svg class="ic"><use href="#i-lock"/></svg>Session</h2>
+              <p class="hint" id="session-state">Until passkey sign-in ships (Phase 2), paste your session token. It is kept in this tab only and cleared when you close it.</p>
+              <form id="token-form" class="row">
+                <label class="sr-only" for="token">Session token</label>
+                <input id="token" type="password" autocomplete="off" placeholder="Session token">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn ghost" id="token-clear">Sign out</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <h2><svg class="ic"><use href="#i-shield"/></svg>Model and privacy</h2>
+              <dl class="facts" id="info">
+                <div><dt>Model</dt><dd id="info-model">—</dd></div>
+                <div><dt>Think harder</dt><dd id="info-strong">—</dd></div>
+                <div><dt>Prompts processed in</dt><dd id="info-location">—</dd></div>
+                <div><dt>Daily cost cap</dt><dd id="info-cap">—</dd></div>
+              </dl>
+              <p class="flag" id="info-flag" hidden><svg class="ic sm"><use href="#i-globe"/></svg><span>Prompts may be processed outside India (Vertex AI global endpoint). A copy of every exchange stays in your database in Mumbai.</span></p>
+            </article>
+
+            <article class="card">
+              <h2><svg class="ic"><use href="#i-clock"/></svg>Retention</h2>
+              <dl class="facts">
+                <div><dt>Messages</dt><dd><span data-ret="messages">365</span> days</dd></div>
+                <div><dt>Unpinned memories</dt><dd><span data-ret="unpinnedMemories">180</span> days unused</dd></div>
+                <div><dt>Tool calls</dt><dd><span data-ret="toolCalls">90</span> days</dd></div>
+                <div><dt>Audit log</dt><dd><span data-ret="auditLog">730</span> days</dd></div>
+              </dl>
+            </article>
+
+            <article class="card">
+              <h2><svg class="ic"><use href="#i-sparkle"/></svg>Appearance</h2>
+              <div class="segmented" id="theme" role="group" aria-label="Theme">
+                <button data-theme-set="auto" aria-pressed="true">Auto</button>
+                <button data-theme-set="light" aria-pressed="false">Light</button>
+                <button data-theme-set="dark" aria-pressed="false">Dark</button>
+              </div>
+            </article>
+
+            <article class="card">
+              <h2><svg class="ic"><use href="#i-download"/></svg>Your data</h2>
+              <p class="hint">Download everything Weekend holds: conversations, memories, reminders, tool calls and the audit log.</p>
+              <button id="export" class="btn primary"><svg class="ic sm"><use href="#i-download"/></svg>Download export (JSON)</button>
+            </article>
+
+            <article class="card danger-zone">
+              <h2><svg class="ic"><use href="#i-trash"/></svg>Delete everything</h2>
+              <p class="hint">This permanently deletes all your data and can't be undone. Type <strong>DELETE ALL MY DATA</strong> to confirm.</p>
+              <form id="delete-form" class="row">
+                <label class="sr-only" for="delete-phrase">Confirmation phrase</label>
+                <input id="delete-phrase" autocomplete="off" placeholder="DELETE ALL MY DATA">
+                <button type="submit" class="btn danger" id="delete-btn" disabled>Delete all my data</button>
+              </form>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="confirm" class="dialog">
+    <form method="dialog">
+      <h2 id="confirm-title">Are you sure?</h2>
+      <p id="confirm-text"></p>
+      <div class="row end">
+        <button value="cancel" class="btn ghost">Cancel</button>
+        <button value="ok" class="btn danger" id="confirm-ok">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
   <script src="app.js" defer></script>
 </body>
 </html>
