@@ -22,6 +22,16 @@ Try "what time is it?", "Remember that I prefer filter coffee", "what do you kno
 
 Expected log line: `Started WeekendApplication in 0.7 seconds`.
 
+## UI preview env (design review, offline)
+```bash
+cd app
+mvn spring-boot:run -Dspring-boot.run.profiles=local,ui
+# open http://127.0.0.1:8081  (loopback only; port 8081 so it can run beside `local` on 8080)
+```
+The `ui` profile seeds made-up demo memories and reminders (in memory only, gone on restart) so every screen can be reviewed populated. It refuses to start unless the offline model is active and sessions are off, so it can never run against real data. Deep links: `#chat`, `#memories`, `#reminders`, `#settings`. Screenshots: [`docs/ui/`](../docs/ui/).
+
+UI v2 (`resources/static/`): sidebar on desktop, bottom tab bar on phones; light/dark/auto theme; chat with suggestions, model/tool/cost tags (₹ at the tracker FX) and inline confirmation cards; searchable memories with kind and expiry; reminders grouped Upcoming / Done (IST); Settings shows the model, where prompts are processed (🔓 flag when outside India), retention, export and delete-all. No third-party scripts, fonts or icons.
+
 ## Configuration (environment variables)
 | Variable | Default | Meaning |
 |---|---|---|
@@ -77,11 +87,12 @@ Implement `tools.Tool` as a Spring `@Component`: give it a `name()` (`^[a-z][a-z
 | GET / DELETE | `/api/reminders`, `/api/reminders/{id}` | List / cancel reminders |
 | GET / POST | `/api/export`, `/api/delete-all` | Export everything; delete all with `{"confirmation":"DELETE ALL MY DATA"}` |
 | POST | `/jobs/retention`, `/jobs/export`, `/jobs/reminders/{id}/deliver` | Worker jobs (Cloud Scheduler / Cloud Tasks; IAM-protected on Cloud Run) |
+| GET | `/api/info` | Non-secret settings for the Settings screen: models, processing location, retention, cost cap |
 | GET | `/healthz` | Liveness |
 
 ## Testing
 ```bash
-cd app && mvn -B verify     # 40 tests: unit + full HTTP integration (offline, no cloud)
+cd app && mvn -B verify     # 43 tests: unit + full HTTP integration (offline, no cloud)
 ```
 Covered: secret detection and redaction, session tokens (tamper, expiry, fail-closed), audit-chain tamper detection, tool registry rules, routing and cost, the agent loop (read tool, write-tool confirmation, decline, step limit, unknown tool, cost cap), memory (secrets rejected, explicit extraction, pin, retention), retention, export/delete-all, the Vertex SDK message mapping, and the HTTP API (401 without a session, validation, UI served).
 
