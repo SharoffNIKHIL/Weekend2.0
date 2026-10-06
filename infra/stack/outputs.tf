@@ -1,12 +1,22 @@
-# infra/envs/dev/outputs.tf
+# infra/stack/outputs.tf
 output "api_url" {
   description = "API URL (internal ingress, IAM-only; reachable from the entry node)."
   value       = module.app.api_url
 }
 
+output "api_service_name" {
+  description = "Cloud Run API service name (app CD deploys to it)."
+  value       = module.app.api_service_name
+}
+
 output "worker_url" {
   description = "Worker URL (internal ingress; Cloud Scheduler / Cloud Tasks only)."
   value       = module.app.worker_url
+}
+
+output "image_repository" {
+  description = "Artifact Registry Docker prefix for the app image."
+  value       = module.registry.repository_url
 }
 
 output "entry_node" {

@@ -1,4 +1,0 @@
-# infra/envs/prod/terraform.tfvars.example — copy to terraform.tfvars (git-ignored). Prod is idle for now.
-project_id         = "<GCP_PROJECT_ID>"
-billing_account_id = "<BILLING_ACCOUNT_ID>"
-alert_email        = "<ALERT_EMAIL>"

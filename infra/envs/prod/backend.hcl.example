@@ -1,4 +1,0 @@
-# infra/envs/prod/backend.hcl.example — copy to backend.hcl (git-ignored)
-# Bucket created by infra/bootstrap (output state_bucket). GCS state locking is built in.
-bucket = "<GCP_PROJECT_ID>-tfstate"
-prefix = "prod"

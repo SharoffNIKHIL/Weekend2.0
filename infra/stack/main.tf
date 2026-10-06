@@ -1,14 +1,15 @@
-# infra/envs/dev/main.tf
-# Weekend 2.0 — dev on GCP (D4 = GCP, 2026-10-03). PROVISIONAL — depends on D1/D2.
-# FREE BY DEFAULT. Everything that has a monthly cost is behind a switch that defaults to off
-# ("on hold") until the owner approves the cost:
-#   on hold  enable_cmek        Cloud KMS key (≈ $0.10/month)   → Google-managed encryption meanwhile
-#   on hold  entry_node_enabled e2-micro is free in us-central1, but its egress is not:
-#            entry_node_egress  "nat" (Cloud NAT ≈ $1/month) or "external_ip" (IPv4 billing Not verified)
-#   free     Cloud Run (scale to zero), Firestore (default) quota, Secret Manager ≤ 6 versions,
-#            Cloud Scheduler 2 of 3 free jobs, Cloud Tasks, Logging, budget, backup bucket in
-#            US-CENTRAL1 (5 GB free). Dev holds NO real personal data.
-# Any apply still needs an OPEN billing account linked to the project (free tiers require it).
+# infra/stack/main.tf
+# Weekend 2.0 — ONE Terraform root for every environment (dev, prod, any new one).
+# The code holds NO environment values. Each environment supplies two files at plan/apply time:
+#   infra/values/<env>.tfvars      non-identifying settings — committed ONLY on that env's branch
+#   secrets.auto.tfvars            project ID, billing account, alert e-mail — GitHub environment
+#                                  secrets in CI; ../credentials/<project>-<env>.secrets.tfvars locally
+# New environment = new branch + new values file + bootstrap for its project. No code changes.
+#
+# Cost switches (all default to the PAID-SAFE "off" or the SECURE value; values files turn them on):
+#   enable_cmek        Cloud KMS key (≈ $0.10/month)
+#   entry_node_enabled e2-micro tailnet node; egress via Cloud NAT (≈ $1/month) or external IPv4
+#   Everything else fits free tiers at one-user scale (DESIGN §21).
 
 data "google_kms_crypto_key" "data" {
   count = var.enable_cmek ? 1 : 0
@@ -18,12 +19,12 @@ data "google_kms_crypto_key" "data" {
 }
 
 locals {
-  name_prefix = "${var.project_name}-${var.env}" # weekend2-dev
+  name_prefix = "${var.project_name}-${var.env}"
   kms_key_id  = var.enable_cmek ? data.google_kms_crypto_key.data[0].id : null
 }
 
 module "network" {
-  source = "../../modules/network"
+  source = "../modules/network"
 
   name_prefix = local.name_prefix
   region      = var.node_region
@@ -32,58 +33,64 @@ module "network" {
 }
 
 module "secrets" {
-  source = "../../modules/secrets"
+  source = "../modules/secrets"
 
   name_prefix = local.name_prefix
   region      = var.region
   kms_key_id  = local.kms_key_id
-  secrets = {
-    "tailscale/authkey"       = "Tailscale auth key for the dev entry node (one-off, tagged tag:weekend-dev, pre-approved)"
-    "app/session-signing-key" = "HMAC key for passkey session cookies (dev)"
-  }
+  secrets     = var.secrets
 }
 
 module "database" {
-  source = "../../modules/database"
+  source = "../modules/database"
 
   location              = var.region
   kms_key_id            = local.kms_key_id
-  delete_protection     = false
-  pitr                  = false
-  backup_retention_days = 0
+  delete_protection     = var.deletion_protection
+  pitr                  = var.firestore_pitr
+  backup_retention_days = var.firestore_backup_retention_days
 }
 
 module "backup" {
-  source = "../../modules/backup"
+  source = "../modules/backup"
 
   project_id       = var.project_id
   region           = var.region
   location         = var.backup_location
   kms_key_id       = local.kms_key_id
-  retention_days   = 1
-  soft_delete_days = 0
-  force_destroy    = true
+  retention_days   = var.backup_retention_days
+  soft_delete_days = var.backup_soft_delete_days
+  force_destroy    = !var.deletion_protection
+}
+
+module "registry" {
+  source = "../modules/registry"
+
+  name_prefix   = local.name_prefix
+  region        = var.region
+  kms_key_id    = local.kms_key_id
+  keep_versions = var.registry_keep_versions
 }
 
 module "app" {
-  source = "../../modules/app"
+  source = "../modules/app"
 
   name_prefix         = local.name_prefix
   region              = var.region
   image               = var.app_image
   firestore_database  = module.database.database_name
   backup_bucket_name  = module.backup.bucket_name
-  api_secrets         = { session_signing_key = module.secrets.ids["app/session-signing-key"] }
+  api_secrets         = { for k, v in var.api_secret_env : k => module.secrets.ids[v] }
   vertex_location     = var.vertex_location
   model_default       = var.model_default
   model_strong        = var.model_strong
-  max_instances       = 1
-  log_level           = "DEBUG"
-  deletion_protection = false
+  max_instances       = var.api_max_instances
+  log_level           = var.log_level
+  deletion_protection = var.deletion_protection
 }
 
 module "scheduler" {
-  source = "../../modules/scheduler"
+  source = "../modules/scheduler"
 
   name_prefix             = local.name_prefix
   region                  = var.region
@@ -92,7 +99,7 @@ module "scheduler" {
 }
 
 module "entry_node" {
-  source = "../../modules/entry_node"
+  source = "../modules/entry_node"
   count  = var.entry_node_enabled ? 1 : 0
 
   name_prefix         = local.name_prefix
@@ -101,19 +108,19 @@ module "entry_node" {
   subnet_id           = module.network.subnet_id
   node_tag            = module.network.node_tag
   machine_type        = var.entry_node_machine_type
-  disk_type           = "pd-standard" # 30 GB-month free with the always-free e2-micro
-  disk_kms_key_id     = null          # node is in a US free-tier zone; no personal data in dev
+  disk_type           = var.entry_node_disk_type
+  disk_kms_key_id     = var.entry_node_disk_cmek ? local.kms_key_id : null
   external_ip         = var.entry_node_egress == "external_ip"
   tailscale_secret_id = module.secrets.ids["tailscale/authkey"]
   api_service_name    = module.app.api_service_name
   api_region          = var.region
   tailnet_hostname    = var.tailnet_hostname
   tailscale_tag       = var.tailscale_tag
-  deletion_protection = false
+  deletion_protection = var.deletion_protection
 }
 
 module "budget" {
-  source = "../../modules/budget"
+  source = "../modules/budget"
 
   name_prefix        = local.name_prefix
   billing_account_id = var.billing_account_id

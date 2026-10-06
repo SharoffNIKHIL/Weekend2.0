@@ -1,10 +1,10 @@
 # Weekend 2.0 — Personal AI Assistant: Design Document
 
-> **Doc version:** 0.3.0 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
+> **Doc version:** 0.4.0 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
 > **Last updated:** 2026-10-03 (IST) · **Applies to:** prices and versions checked on 2026-10-02/03 · **Cloud:** Google Cloud (D4 decided 2026-10-03)
 > **Currency:** USD 1 = INR 96.3 (mid-market, 2026-10-02, [Trading Economics](https://tradingeconomics.com/india/currency)). All INR figures are rounded.
 
-**D4 (cloud) is decided: Google Cloud** ([ADR-0001](adr/ADR-0001-d4-cloud-provider-gcp.md)). Every other recommendation is **PROVISIONAL** until the owner decides it. Decisions are made in a fixed order: D1 → D2 → D4 → D5 → D6 → D3 (see §6).
+**D4 (cloud) is decided: Google Cloud** ([ADR-0001](adr/ADR-0001-d4-cloud-provider-gcp.md)). **D2 (model) is decided: Claude on Vertex AI, global endpoint, with a copy of every exchange in our database** ([ADR-0002](adr/ADR-0002-d2-model-claude-vertex-global.md)). Every other recommendation is **PROVISIONAL** until the owner decides it. Decisions are made in a fixed order: D1 → D2 → D4 → D5 → D6 → D3 (see §6).
 
 ---
 
@@ -14,6 +14,7 @@ Newest first. Every change to this document adds a row here. Feature releases ha
 
 | Doc version | Date (IST) | Type | Summary | Sections changed |
 |---|---|---|---|---|
+| 0.4.0 | 2026-10-03 | Major | **D2 decided: Claude on Vertex AI (global)**; data exit accepted; **copy of every LLM exchange kept in Firestore asia-south1** (new requirement). CI/CD built: infra-ci (fmt, tflint, plan → PR), infra-cd (apply -auto-approve, free resources only, owner-approved), app-ci, app-cd. One generic Terraform root (`infra/stack`); env values on env branches; short-lived credentials (deployer impersonation, no keys). Stale FastAPI references corrected to Spring Boot | Header, 5.2, 5.3, 6, 7.3, 7.4, 18 |
 | 0.3.0 | 2026-10-03 | Minor | **Application language: Java 17 + Spring Boot 4.1** (owner's choice; replaces the Python/FastAPI plan). Application core built on `Feature_code` (`app/`): agent loop, tool plugins, memory, reminders, retention, P6 export/delete, signed sessions, PWA UI | 7.2, 18 |
 | 0.2.1 | 2026-10-03 | Patch | Dev is **free by default**: CMEK, entry node and NAT are switches that default to off ("on hold"); dev project `weekend2-0` created; billing account found closed | 21.4 |
 | 0.2.0 | 2026-10-03 | Major | **D4 decided: Google Cloud** (AWS dropped). Architecture moved to Cloud Run + Firestore + Vertex AI + e2-micro tailnet node; new 🔓 exit (Claude via Vertex global endpoint); cost re-estimated (≈ ₹2,784/month prod incl. GST); Terraform rewritten for GCP. Earlier AWS content is superseded. | Header, 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 16–22, 24, App. A, C |
@@ -184,7 +185,7 @@ flowchart TB
     subgraph VPC["VPC: no external IPs, Cloud NAT egress"]
       node[Entry node e2-micro<br/>tailscaled + HTTPS proxy<br/>adds ID token]
     end
-    api[Cloud Run: api<br/>internal ingress, IAM invoke<br/>FastAPI: auth, chat, voice, memory, agent core]
+    api[Cloud Run: api<br/>internal ingress, IAM invoke<br/>Spring Boot (Java 17): auth, chat, voice, memory, agent core]
     worker[Cloud Run: worker<br/>retention, export, reminders]
     fs[(Firestore Native<br/>CMEK, vector search)]
     sm[(Secret Manager<br/>CMEK)]
@@ -208,7 +209,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
   participant P as PWA (phone)
-  participant A as API (FastAPI)
+  participant A as API (Spring Boot)
   participant M as Memory (Firestore)
   participant L as LLM (Vertex AI)
   participant T as Tool (e.g. Calendar)
@@ -266,7 +267,7 @@ sequenceDiagram
 | ID | Decision | Options | PROVISIONAL recommendation | Status | Details |
 |---|---|---|---|---|---|
 | D1 | Hosting | Serverless + tailnet entry node (E2-GCP) · Private VM · Local Mac · Hybrid | **E2-GCP: Cloud Run + Firestore + e2-micro tailnet entry node, asia-south1** | Open (PROVISIONAL) | §17 |
-| D2 | AI model | Claude on Vertex AI (global) · Gemini on Vertex AI (asia-south1) · Claude API · open-weights local | **Claude Haiku 4.5 (default) + Sonnet 5 (hard tasks) on Vertex AI, global endpoint** (🔓 leaves India; Gemini in Mumbai is the in-India option) | Open — depends on D1 | §7 |
+| D2 | AI model | Claude on Vertex AI (global) · Gemini on Vertex AI (asia-south1) · Claude API · open-weights local | **Claude Haiku 4.5 (default) + Sonnet 5 (hard tasks) on Vertex AI, global endpoint**; data exit accepted; copy of every exchange in Firestore asia-south1 ([ADR-0002](adr/ADR-0002-d2-model-claude-vertex-global.md)) | **Decided 2026-10-03** | §7 |
 | D4 | Cloud provider | AWS · GCP · none | **Google Cloud** — ~~AWS~~ SUPERSEDED (by owner decision 2026-10-03, [ADR-0001](adr/ADR-0001-d4-cloud-provider-gcp.md)) | **Decided 2026-10-03** | §16 |
 | D5 | Storage / hardware | Firestore · Cloud SQL Postgres · Postgres on a VM · local disk | **Firestore (Native, `(default)`, CMEK) in asia-south1; GCS for backups** — ~~PostgreSQL on EBS~~ SUPERSEDED (by D4 = GCP) | Open — depends on D1 | §9 |
 | D6 | Authentication | Passkey · passkey + tailnet · OIDC (Google) · mTLS | **Tailnet (device) + passkey (person)**, recovery codes offline | Open — depends on D1 | §14 |
@@ -307,14 +308,14 @@ Prices are per million tokens (input / output), checked 2026-10-02 on [Anthropic
 | C. Gemini API | 2.5 Flash-Lite $0.10/$0.40 · 2.5 Flash $0.30/$2.50 · 3.1 Pro $2/$12 ([third-party summary](https://benchlm.ai/google/api-pricing), `Not verified` on Google's page) | Cheapest | Vertex regional options — `Not verified` for asia-south1 | Very cheap; same Google bill | Different model family; check data-use terms | 🔓 to Google |
 | D. Open-weights, local | e.g. Qwen3 14B, Gemma 4 26B A4B (Apache 2.0, per [HF blog](https://huggingface.co/blog/daya-shankar/open-source-llm-models-to-run-locally)) via Ollama | $0 per token | Your hardware | Maximum privacy | Weaker than frontier models; needs a 24–32 GB Mac or a GPU; hardware disclosure (§17.3) | None |
 
-**PROVISIONAL recommendation (updated 2026-10-03, D4 = GCP):** Option **A2**. Haiku 4.5 handles about 80% of turns, Sonnet 5 about 20%, and Opus only on explicit request. If keeping prompts in India matters more than model choice, pick **A3 (Gemini in asia-south1)**; the model location is one Terraform variable (`vertex_location`). Keep the LLM client behind an interface (`LLMProvider`) so B or D can be swapped in later.
+**DECIDED 2026-10-03 (owner, ADR-0002): Option A2**, data exit accepted, with a copy of every exchange in our database (§7.4). ~~PROVISIONAL recommendation~~: Haiku 4.5 handles about 80% of turns, Sonnet 5 about 20%, and Opus only on explicit request. If keeping prompts in India matters more than model choice, pick **A3 (Gemini in asia-south1)**; the model location is one Terraform variable (`vertex_location`). Keep the LLM client behind an interface (`LLMProvider`) so B or D can be swapped in later.
 
 **Price check:** Vertex AI lists Claude at Anthropic's prices on the global endpoint. Confirm Sonnet 5 on [Vertex AI generative AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing) before deciding D2. `Not verified` for Sonnet 5 specifically. (The earlier Bedrock price conflict no longer applies.)
 
 **Tokenizer note:** Claude 4.7 and later models use a tokenizer that produces about 30% more tokens for the same text (Anthropic pricing page). The cost model in §21 adds this for Sonnet 5.
 
 ### 7.4 Data held, retention, exits
-- Held: conversation turns (text), model and token counts per turn, tool calls.
+- Held: conversation turns (text), model and token counts per turn, tool calls, and (**D2 requirement, 2026-10-03**) a **copy of every LLM exchange** — model, the redacted request sent to Vertex AI, the reply, tokens, cost, time — in Firestore asia-south1. Same retention as messages (365 days), included in export (P6) and delete-all. Built in `Feature_database` (T-040).
 - Retention: conversations 365 days by default (owner-configurable); token and cost metrics 2 years.
 - 🔓 **DATA LEAVES OWNER CONTROL**
   - **What:** prompts (message, retrieved memories, recent history, tool results)
@@ -322,6 +323,7 @@ Prices are per million tokens (input / output), checked 2026-10-02 on [Anthropic
   - **Why:** LLM inference
   - **Policy:** data handling is governed by Google Cloud ([Vertex AI data governance / zero data retention](https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance)); request-response logging is off unless enabled. Training-use and retention specifics: `Not verified` — read that page before D2.
   - **Alternative:** Gemini on Vertex AI in asia-south1 (A3), or an open-weights model running locally (Option D)
+  - **Owner decision (2026-10-03):** exit accepted; we keep our own copy in India.
 
 ### 7.5 Security
 - Prompt-injection defence: tool results and connector content are wrapped as *data*, never as instructions. Write-tools always require confirmation.
@@ -721,8 +723,8 @@ The entry node is configured by its startup script (Tailscale install and join).
 - Pipeline: `ruff` + `black --check` → `mypy` → `pytest` (unit + integration with a Postgres service container) → build the Docker image (pinned base digest, non-root) → scan (Trivy for image and IaC, `gitleaks` for secrets, `pip-audit` for dependencies, `checkov` + `tflint` for Terraform) → deploy.
 - **Google Cloud access via Workload Identity Federation:** GitHub's OIDC token is exchanged for a short-lived token of a **read-only plan service account**. The provider only accepts `SharoffNIKHIL/Weekend2.0` jobs running in the matching GitHub environment. No JSON keys anywhere. (Weekend v1 used a downloaded service-account key; that is not allowed here.)
 - **Deploy gate:** a manual approval environment (`production`). Deploy = push the image to Artifact Registry (asia-south1, CMEK), then deploy a new Cloud Run revision with no traffic, health-check it, and shift traffic. Rollback = route traffic back to the previous revision.
-- **Today (2026-10-03):** `branch-guard` (no tfvars in code, branch rules, `terraform fmt`/`validate`) and `terraform-plan` (masked plan as a PR comment) run on PRs into `dev`.
-- Terraform runs from the owner's Mac (plan → review → apply), not from CI, in v1.
+- **Built 2026-10-03** (details: [infra/README.md → CI/CD](../infra/README.md)): `branch-guard` (branch rules; env values only on their own branch) · `infra-ci` (`terraform fmt` → `tflint` → `validate` → `ruff` → plan → cost guard → masked plan as a PR comment) · `infra-cd` (after a merged PR and the owner's approval of the `dev-apply` environment: plan → **cost guard, free resources only** → `terraform apply -auto-approve`) · `app-ci` (`mvn verify` → image build) · `app-cd` (test → Artifact Registry → Cloud Run revision). CD is **off** until the owner sets `INFRA_CD_ENABLED` / `APP_CD_ENABLED`.
+- Credentials: no keys. CI plans with a read-only SA, CD with a least-privilege deployer SA, both via WIF; the owner runs Terraform locally through `infra/scripts/tf.py` with a 1-hour impersonated token.
 
 ---
 
@@ -810,7 +812,7 @@ Cloud Billing budget in INR at 50/80/100% of ₹4,237 before tax (≈ ₹5,000 w
 | Phase | Name | Scope | Exit criteria | Status |
 |---|---|---|---|---|
 | 0 | Requirements & architecture | This document, D1–D4 decisions, diagrams, cost | D1–D4 decided; diagram and cost approved | 🟡 In progress |
-| 1 | MVP backend | FastAPI + agent core + Firestore on Cloud Run (dev project); text chat via a test page through the entry node; unit tests (Firestore emulator) | Agent answers via the test interface, tests pass | ⚪ |
+| 1 | MVP backend | Spring Boot (Java 17) + agent core + Firestore on Cloud Run (dev project); text chat via a test page through the entry node; unit tests (Firestore emulator) | Agent answers via the test interface, tests pass | ⚪ |
 | 2 | Mobile access | Tailnet, passkeys, PWA, push, voice (benchmark A vs B) | Owner uses it from the phone securely (D6, TLS) | ⚪ |
 | 3 | Memory & storage | Memories, retrieval, retention jobs, export/delete, first connector (Calendar) | Encrypted, owner-controlled memory with retention, export, delete | ⚪ |
 | 4 | Security hardening | STRIDE, P1–P10 evidence, injection tests | Threat model done; P1–P10 verified in M7 | ⚪ |

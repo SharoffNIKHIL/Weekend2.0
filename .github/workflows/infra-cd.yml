@@ -1,0 +1,106 @@
+# .github/workflows/infra-cd.yml — Infrastructure CD: terraform apply -auto-approve, FREE resources only
+# Runs only after a PR into dev was MERGED (push to dev). Gates, all required:
+#   1. repository variable INFRA_CD_ENABLED == 'true'   (off until the owner turns it on: "don't deploy yet")
+#   2. the pushed commit belongs to a merged PR          (no direct pushes)
+#   3. GitHub environment "dev-apply" with the owner as REQUIRED REVIEWER → you click "Approve and deploy"
+#      (GitHub does not let a PR author approve their own PR, so this is the approval step)
+#   4. cost_guard.py: anything not free of cost blocks the apply
+# Identity: least-privilege deployer (infra/bootstrap/deployer.tf) via WIF, only from
+# environment "dev-apply" on refs/heads/dev. No keys.
+#   Environment "dev-apply" secrets: GCP_PROJECT_ID, GCP_BILLING_ACCOUNT_ID, ALERT_EMAIL,
+#                                    GCP_WIF_PROVIDER, GCP_DEPLOY_SERVICE_ACCOUNT
+name: infra-cd
+
+on:
+  push:
+    branches: [dev]
+    paths: ["infra/stack/**", "infra/modules/**", "infra/values/dev.tfvars", ".github/workflows/infra-cd.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-cd-dev   # one apply at a time; never cancel a running apply
+  cancel-in-progress: false
+
+jobs:
+  merged-pr:
+    if: vars.INFRA_CD_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr: ${{ steps.pr.outputs.number }}
+    steps:
+      - name: Require a merged PR for this commit
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          n=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                --jq '[.[] | select(.merged_at != null and .base.ref == "dev")][0].number // empty')
+          if [ -z "$n" ]; then echo "::error::${GITHUB_SHA} is not from a merged PR into dev; refusing to apply."; exit 1; fi
+          echo "number=$n" >> "$GITHUB_OUTPUT"
+          echo "Commit comes from merged PR #$n"
+
+  apply:
+    needs: merged-pr
+    runs-on: ubuntu-latest
+    environment: dev-apply   # required reviewer = owner
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Write secrets.auto.tfvars (runner only)
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_BILLING_ACCOUNT_ID: ${{ secrets.GCP_BILLING_ACCOUNT_ID }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'project_id = "%s"\nbilling_account_id = "%s"\nalert_email = "%s"\n' \
+            "$GCP_PROJECT_ID" "$GCP_BILLING_ACCOUNT_ID" "$ALERT_EMAIL" > infra/stack/secrets.auto.tfvars
+
+      - name: terraform plan
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        working-directory: infra/stack
+        run: |
+          set -euo pipefail
+          terraform init -input=false -lockfile=readonly \
+            -backend-config="bucket=${GCP_PROJECT_ID}-tfstate" -backend-config="prefix=stack/dev"
+          terraform plan -input=false -no-color -var-file=../values/dev.tfvars -out="$RUNNER_TEMP/tfplan" > /dev/null
+          terraform show -json "$RUNNER_TEMP/tfplan" > "$RUNNER_TEMP/plan.json"
+
+      - name: Cost guard — free of cost only
+        run: python3 infra/scripts/cost_guard.py "$RUNNER_TEMP/plan.json"
+
+      - name: terraform apply -auto-approve (the reviewed, guarded plan)
+        working-directory: infra/stack
+        run: |
+          # Full output stays off the (public) log; print the summary and any errors, project numbers masked.
+          set +e
+          terraform apply -input=false -no-color -auto-approve "$RUNNER_TEMP/tfplan" > "$RUNNER_TEMP/apply.log" 2>&1
+          rc=$?
+          grep -E '^(Apply complete|Error|│)' "$RUNNER_TEMP/apply.log" | sed -E 's/[0-9]{10,13}/<PROJECT_NUMBER>/g'
+          rm -f "$RUNNER_TEMP/apply.log"
+          exit $rc
+
+      - name: Remove secrets and credentials
+        if: always()
+        run: rm -f infra/stack/secrets.auto.tfvars "$RUNNER_TEMP/tfplan" "$RUNNER_TEMP/plan.json" gha-creds-*.json
