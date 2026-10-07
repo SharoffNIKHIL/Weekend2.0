@@ -31,12 +31,17 @@ import com.weekend.assistant.retention.RetentionService;
 import com.weekend.assistant.security.SecretFilter;
 import com.weekend.assistant.tools.AgentDelegateTool;
 import com.weekend.assistant.tools.CurrentTimeTool;
+import com.weekend.assistant.tools.MathEvaluateTool;
+import com.weekend.assistant.tools.MathSolveTool;
+import com.weekend.assistant.tools.MathStatsTool;
 import com.weekend.assistant.tools.MemorySaveTool;
 import com.weekend.assistant.tools.MemorySearchTool;
 import com.weekend.assistant.tools.ReminderCreateTool;
 import com.weekend.assistant.tools.TaskCreateTool;
 import com.weekend.assistant.tools.TaskListTool;
 import com.weekend.assistant.tools.ToolRegistry;
+import com.weekend.assistant.tools.WebSearchTool;
+import com.weekend.assistant.port.WebSearchClient;
 import com.weekend.assistant.workspace.ApprovalService;
 import com.weekend.assistant.workspace.FolderService;
 import com.weekend.assistant.workspace.HomeService;
@@ -66,6 +71,7 @@ public final class Harness {
     public final InMemoryAuditLog audit = new InMemoryAuditLog(clock);
     public final SecretFilter secrets = new SecretFilter();
     public final FakeRemoteAgent remote = new FakeRemoteAgent();
+    public final FakeWeb web = new FakeWeb();
     public final NotificationService notifications;
     public final InboxService inbox;
     public final MemoryService memories;
@@ -97,7 +103,8 @@ public final class Harness {
         retention = new RetentionService(messages, memoryRepo, toolCalls, notifications, inbox, audit, props, clock);
         ToolRegistry registry = new ToolRegistry(List.of(new CurrentTimeTool(clock, props), new MemorySearchTool(memories),
                 new MemorySaveTool(memories), new ReminderCreateTool(reminders, props), new TaskCreateTool(tasks, props),
-                new TaskListTool(tasks), new AgentDelegateTool(agents, remote, inbox, secrets)));
+                new TaskListTool(tasks), new AgentDelegateTool(agents, remote, inbox, secrets), new MathEvaluateTool(),
+                new MathSolveTool(), new MathStatsTool(), new WebSearchTool(web, secrets)));
         agent = new AgentService(llm, registry, new ModelRouter(props), new ContextBuilder(props), new CostCalculator(props),
                 memories, conversations, messages, toolCalls, secrets, audit, agents, notifications, props, clock);
         approvals = new ApprovalService(agent, payments);
@@ -125,6 +132,28 @@ public final class Harness {
         @Override
         public boolean healthy(AgentProfile agent) {
             return healthy;
+        }
+    }
+
+    /** Web search stand-in: off unless {@code enabled}; records queries. */
+    public static final class FakeWeb implements WebSearchClient {
+        public final List<String> queries = new ArrayList<>();
+        public boolean enabled;
+
+        @Override
+        public boolean enabled() {
+            return enabled;
+        }
+
+        @Override
+        public List<Result> search(String query, int limit) {
+            queries.add(query + "|" + limit);
+            return List.of(new Result("Compound interest", "https://example.org/wiki/Compound_interest", "A = P(1 + r/n)^(nt)"));
+        }
+
+        @Override
+        public String summary(String title) {
+            return "Summary of " + title;
         }
     }
 }

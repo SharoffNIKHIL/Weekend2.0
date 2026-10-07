@@ -1,5 +1,6 @@
 package com.weekend.assistant.config;
 
+import com.weekend.assistant.adapter.llm.RetryingLlmProvider;
 import com.weekend.assistant.adapter.llm.ScriptedLlmProvider;
 import com.weekend.assistant.adapter.llm.VertexClaudeProvider;
 import com.weekend.assistant.port.LlmProvider;
@@ -12,6 +13,11 @@ public class LlmConfig {
 
     @Bean
     public LlmProvider llmProvider(WeekendProperties props) {
+        WeekendProperties.Pressure p = props.pressure();
+        return new RetryingLlmProvider(base(props), p.llmRetries(), p.retryBackoff(), d -> Thread.sleep(d.toMillis()));
+    }
+
+    private static LlmProvider base(WeekendProperties props) {
         WeekendProperties.Llm llm = props.llm();
         return switch (llm.provider()) {
             case "local" -> new ScriptedLlmProvider();

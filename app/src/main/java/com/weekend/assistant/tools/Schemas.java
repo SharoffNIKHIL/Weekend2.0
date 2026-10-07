@@ -26,6 +26,11 @@ final class Schemas {
         return Map.of("type", "integer", "description", description, "minimum", min, "maximum", max);
     }
 
+    static String optionalString(Map<String, Object> input, String key) {
+        Object v = input == null ? null : input.get(key);
+        return v == null ? null : String.valueOf(v).trim();
+    }
+
     static String requireString(Map<String, Object> input, String key) {
         Object v = input == null ? null : input.get(key);
         if (!(v instanceof String s) || s.isBlank()) {

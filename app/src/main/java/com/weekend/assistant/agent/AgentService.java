@@ -4,6 +4,9 @@ import com.weekend.assistant.agents.AgentDirectory;
 import com.weekend.assistant.config.WeekendProperties;
 import com.weekend.assistant.domain.AgentConditions;
 import com.weekend.assistant.domain.AgentKind;
+import com.weekend.assistant.domain.AgentPersona;
+import com.weekend.assistant.domain.ApprovalRange;
+import com.weekend.assistant.domain.SearchRange;
 import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.domain.Conversation;
 import com.weekend.assistant.domain.Memory;
@@ -37,6 +40,7 @@ import java.time.Instant;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -70,6 +74,7 @@ public class AgentService {
     private final WeekendProperties props;
     private final Clock clock;
     private final Map<String, PendingAction> pending = new ConcurrentHashMap<>();
+    private final Map<String, SearchRange> pendingRange = new ConcurrentHashMap<>();
 
     public AgentService(LlmProvider llm, ToolRegistry tools, ModelRouter router, ContextBuilder context,
             CostCalculator costs, MemoryService memories, ConversationRepository conversations,
@@ -106,7 +111,9 @@ public class AgentService {
                 .flatMap(conversations::findById)
                 .orElseGet(() -> conversations.save(new Conversation(UUID.randomUUID().toString(), title(safeText), now, false)));
 
-        List<Message> history = messages.recent(conv.id(), props.agent().maxHistoryTurns());
+        AgentPersona persona = agent.persona();
+        AgentPersona.Budget budget = persona.budget();
+        List<Message> history = messages.recent(conv.id(), budget.historyTurns());
         Message userMsg = messages.save(new Message(UUID.randomUUID().toString(), conv.id(), Role.USER,
                 safeText, null, 0, 0, BigDecimal.ZERO, now));
         boolean memorySaved = memories.extractExplicit(userText, userMsg.id()).isPresent();
@@ -114,12 +121,17 @@ public class AgentService {
             return toRemote(agent, conv, safeText, memorySaved);
         }
 
-        List<Memory> relevant = memories.search(safeText, props.agent().maxMemoriesInContext());
-        String model = router.choose(safeText, thinkHarder || cond.thinkHarder());
+        List<Memory> relevant = context(safeText, budget.memories());
+        String model = router.choose(safeText, thinkHarder || cond.thinkHarder() || budget.strongModel());
         String system = context.systemPrompt(relevant, agent);
-        List<ToolSpec> specs = tools.specs().stream().filter(t -> cond.allows(t.name())).toList();
-        int maxSteps = agent.kind() == AgentKind.BUILTIN ? props.agent().maxToolSteps()
-                : Math.min(props.agent().maxToolSteps(), cond.maxToolSteps());
+        List<ToolSpec> specs = tools.specs().stream()
+                .filter(t -> cond.allows(t.name()) && inRange(persona.search(), t.name()) && tools.find(t.name()).map(Tool::available).orElse(false))
+                .toList();
+        int maxSteps = Math.min(props.agent().maxToolSteps(), budget.maxToolSteps());
+        if (agent.kind() == AgentKind.CUSTOM) {
+            maxSteps = Math.min(maxSteps, cond.maxToolSteps());
+        }
+        int maxTokens = Math.min(props.llm().maxOutputTokens(), budget.maxTokens());
         List<Turn> turns = new ArrayList<>(context.turns(history, safeText));
 
         List<String> used = new ArrayList<>();
@@ -129,8 +141,7 @@ public class AgentService {
         PendingAction awaiting = null;
 
         for (int step = 0; step <= maxSteps; step++) {
-            LlmResponse res = llm.complete(new LlmRequest(model, system, List.copyOf(turns), specs,
-                    props.llm().maxOutputTokens()));
+            LlmResponse res = llm.complete(new LlmRequest(model, system, List.copyOf(turns), specs, maxTokens, persona.temperature()));
             tokensIn += res.inputTokens();
             tokensOut += res.outputTokens();
             reply = res.text() == null ? "" : secrets.redact(res.text());
@@ -149,17 +160,22 @@ public class AgentService {
                     results.add(new ToolResult(use.id(), "Unknown tool: " + use.name(), true));
                     continue;
                 }
-                if (!cond.allows(use.name())) {
+                if (!tool.get().available()) {
+                    results.add(new ToolResult(use.id(), "Tool not available right now: " + use.name(), true));
+                    continue;
+                }
+                if (!cond.allows(use.name()) || !inRange(persona.search(), use.name())) {
                     results.add(new ToolResult(use.id(), "Tool not allowed for this agent: " + use.name(), true));
                     continue;
                 }
-                if (tool.get().writes() || cond.confirmAllTools()) {
+                if (needsApproval(tool.get(), cond.confirmAllTools(), persona.approval())) {
                     awaiting = hold(conv.id(), use.name(), use.input(),
                             "Run " + use.name() + " with " + secrets.redact(String.valueOf(use.input())) + "?");
+                    pendingRange.put(awaiting.id(), persona.search());
                     results.add(new ToolResult(use.id(), "Waiting for the owner's confirmation; do not repeat this call.", false));
                     continue;
                 }
-                ToolOutput out = runTool(tool.get(), use.input(), new ToolContext(conv.id(), userMsg.id()), false);
+                ToolOutput out = runTool(tool.get(), use.input(), new ToolContext(conv.id(), userMsg.id(), persona.search()), false);
                 used.add(use.name());
                 results.add(new ToolResult(use.id(), ContextBuilder.asData(out.content()), out.isError()));
             }
@@ -175,6 +191,33 @@ public class AgentService {
                 tokensIn, tokensOut, cost, clock.instant()));
         audit.append("agent", "chat.turn", conv.id());
         return new ChatResult(conv.id(), reply, model, used, awaiting, cost, memorySaved, agent.id(), agent.name());
+    }
+
+    /** Pinned memories (your profile) always come first, then the ones relevant to this message. */
+    private List<Memory> context(String text, int limit) {
+        Map<String, Memory> out = new LinkedHashMap<>();
+        memories.all().stream().filter(Memory::pinned).limit(Math.max(4, limit)).forEach(m -> out.put(m.id(), m));
+        memories.search(text, limit).forEach(m -> out.putIfAbsent(m.id(), m));
+        return List.copyOf(out.values());
+    }
+
+    /** Which tools an agent's search range lets it see: OFF = none that look things up; MEMORY = local only. */
+    static boolean inRange(SearchRange range, String tool) {
+        boolean lookup = tool.equals("memory_search") || tool.equals("task_list");
+        boolean web = tool.equals("web_search");
+        return switch (range) {
+            case OFF -> !lookup && !web;
+            case MEMORY -> !web;
+            case WEB, WIDE -> true;
+        };
+    }
+
+    /** Writes always ask; external tools ask unless the range is WRITES_ONLY; ALL asks for everything. */
+    static boolean needsApproval(Tool tool, boolean confirmAll, ApprovalRange range) {
+        if (tool.writes() || confirmAll || range == ApprovalRange.ALL) {
+            return true;
+        }
+        return tool.external() && range != ApprovalRange.WRITES_ONLY;
     }
 
     /** A chat addressed to a remote agent: nothing is sent until the owner approves (🔓 data exit). */
@@ -200,6 +243,7 @@ public class AgentService {
     /** Owner answers yes/no to a pending write-tool call. */
     public Optional<String> confirm(String pendingId, boolean approved) {
         PendingAction action = pending.remove(pendingId);
+        SearchRange range = pendingRange.remove(pendingId == null ? "" : pendingId);
         if (action == null) {
             return Optional.empty();
         }
@@ -208,7 +252,7 @@ public class AgentService {
             return Optional.of("Cancelled. Nothing was changed.");
         }
         ToolOutput out = tools.find(action.tool())
-                .map(t -> runTool(t, action.input(), new ToolContext(action.conversationId(), null), true))
+                .map(t -> runTool(t, action.input(), new ToolContext(action.conversationId(), null, range), true))
                 .orElse(ToolOutput.error("Tool no longer available"));
         return Optional.of(out.content());
     }

@@ -1,6 +1,6 @@
 // app/src/main/resources/static/sw.js — caches the app shell only. API responses are never cached (personal data).
-const SHELL = "weekend-shell-v3";
-const FILES = ["/", "/index.html", "/styles.css", "/app.js", "/theme.js", "/manifest.webmanifest", "/icon.svg", "/logo.svg"];
+const SHELL = "weekend-shell-v4";
+const FILES = ["/", "/index.html", "/styles.css", "/app.js", "/theme.js", "/manifest.webmanifest", "/icon.svg", "/logo.svg", "/companion.js", "/companion.svg"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(SHELL).then((c) => c.addAll(FILES))));
 self.addEventListener("activate", (e) =>
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== SHELL).map((k) => caches.delete(k))))));

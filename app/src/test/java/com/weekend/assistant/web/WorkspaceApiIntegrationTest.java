@@ -114,7 +114,8 @@ class WorkspaceApiIntegrationTest {
     @Test
     void agentsCustomConditionsAndRemoteGuard() throws Exception {
         mvc.perform(as(get("/api/agents"))).andExpect(jsonPath("$.agents[0].id").value("weekend"))
-                .andExpect(jsonPath("$.remoteAllowed").value(false)).andExpect(jsonPath("$.tools.length()").value(7));
+                .andExpect(jsonPath("$.remoteAllowed").value(false)).andExpect(jsonPath("$.tools.length()").value(11)).andExpect(jsonPath("$.modes.length()").value(4))
+                .andExpect(jsonPath("$.webAllowed").value(false)).andExpect(jsonPath("$.agents[0].persona.mode").value("WORK"));
 
         String id = JsonPath.read(body(post("/api/agents/custom").content(
                 "{\"name\":\"Planner\",\"instructions\":\"# Planner\\nPlan my week.\",\"conditions\":{\"allowedTools\":[\"task_list\"],\"confirmAllTools\":true,\"thinkHarder\":false,\"maxToolSteps\":3}}"), 201), "$.id");

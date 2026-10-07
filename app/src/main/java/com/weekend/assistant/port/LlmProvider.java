@@ -29,7 +29,13 @@ public interface LlmProvider {
 
     record ToolResults(List<ToolResult> results) implements Turn {}
 
-    record LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens) {}
+    /** {@code temperature} 0.0–1.0, or null for the provider default. */
+    record LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens, Double temperature) {
+
+        public LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens) {
+            this(model, system, turns, tools, maxTokens, null);
+        }
+    }
 
     record LlmResponse(String text, List<ToolUse> toolUses, String stopReason, int inputTokens, int outputTokens) {
         public boolean wantsTools() {

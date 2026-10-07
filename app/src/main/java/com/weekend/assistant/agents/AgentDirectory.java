@@ -3,6 +3,7 @@ package com.weekend.assistant.agents;
 import com.weekend.assistant.config.WeekendProperties;
 import com.weekend.assistant.domain.AgentConditions;
 import com.weekend.assistant.domain.AgentKind;
+import com.weekend.assistant.domain.AgentPersona;
 import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.port.AgentProfileRepository;
 import com.weekend.assistant.port.AuditLog;
@@ -51,7 +52,7 @@ public class AgentDirectory {
         this.clock = clock;
         this.endpoints = new EndpointPolicy(props.agents().allowedHosts());
         repo.save(new AgentProfile(DEFAULT_ID, "Weekend", "Your private assistant. Default for every chat.", AgentKind.BUILTIN,
-                null, "built in", AgentConditions.DEFAULT, null, null, false, clock.instant()));
+                null, "built in", AgentConditions.DEFAULT, AgentPersona.DEFAULT, null, null, false, clock.instant()));
         props.agents().custom().forEach(this::loadConfigured);
     }
 
@@ -73,7 +74,7 @@ public class AgentDirectory {
         }
         AgentProfile a = repo.save(new AgentProfile("custom-" + UUID.randomUUID().toString().substring(0, 8),
                 Inputs.required(name, "name", 60), Inputs.optional(description, "description", 300), AgentKind.CUSTOM, text,
-                "written in app", sane(conditions), null, null, true, clock.instant()));
+                "written in app", sane(conditions), AgentPersona.DEFAULT, null, null, true, clock.instant()));
         audit.append("owner", "agent.create", a.id());
         return a;
     }
@@ -83,7 +84,7 @@ public class AgentDirectory {
         String token = newToken();
         AgentProfile a = repo.save(new AgentProfile("remote-" + UUID.randomUUID().toString().substring(0, 8),
                 Inputs.required(name, "name", 60), Inputs.optional(description, "description", 300), AgentKind.REMOTE, null,
-                null, new AgentConditions(List.of(), true, false, 0), url, sha256(token), true, clock.instant()));
+                null, new AgentConditions(List.of(), true, false, 0), AgentPersona.DEFAULT, url, sha256(token), true, clock.instant()));
         audit.append("owner", "agent.connect", a.id());
         return new Connection(a, token);
     }
@@ -92,6 +93,17 @@ public class AgentDirectory {
         return repo.findById(id).filter(a -> a.kind() == AgentKind.CUSTOM).map(a -> {
             audit.append("owner", "agent.conditions", id);
             return repo.save(a.withConditions(sane(conditions)));
+        });
+    }
+
+    /** Personality and performance for Weekend or a custom agent (remote agents have their own). */
+    public Optional<AgentProfile> updatePersona(String id, AgentPersona persona) {
+        if (persona == null) {
+            throw new IllegalArgumentException("persona is required");
+        }
+        return repo.findById(id).filter(a -> a.kind() != AgentKind.REMOTE).map(a -> {
+            audit.append("owner", "agent.persona", id + ":" + persona.mode() + ":e" + persona.efficiency());
+            return repo.save(a.withPersona(persona));
         });
     }
 
@@ -152,7 +164,7 @@ public class AgentDirectory {
         AgentConditions cond = sane(new AgentConditions(c.allowedTools(), c.confirmAllTools(), c.thinkHarder(),
                 c.maxToolSteps() == null ? 5 : c.maxToolSteps()));
         repo.save(new AgentProfile(c.id(), c.name(), c.description(), AgentKind.CUSTOM, text, "file: " + file.getFileName(),
-                cond, null, null, false, clock.instant()));
+                cond, AgentPersona.DEFAULT, null, null, false, clock.instant()));
         log.info("agent {} loaded ({} characters of instructions)", c.id(), text.length());
     }
 

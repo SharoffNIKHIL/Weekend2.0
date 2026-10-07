@@ -4,6 +4,9 @@ import com.weekend.assistant.agents.AgentDirectory;
 import com.weekend.assistant.config.WeekendProperties;
 import com.weekend.assistant.domain.AgentConditions;
 import com.weekend.assistant.domain.AgentKind;
+import com.weekend.assistant.domain.AgentMode;
+import com.weekend.assistant.domain.AgentPersona;
+import com.weekend.assistant.domain.Mood;
 import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.port.RemoteAgentClient;
 import com.weekend.assistant.tools.ToolRegistry;
@@ -44,17 +47,24 @@ public class AgentController {
     /** What the UI shows for an agent. {@code dataLeavesIndia}: its prompts or messages are processed outside India (P7). */
     public record AgentView(String id, String name, String description, AgentKind kind, String instructionsSource,
             String instructionsTitle, int instructionsLines, int instructionsChars, AgentConditions conditions,
+            AgentPersona persona, Mood mood, boolean focusMode, AgentPersona.Budget budget, double temperature,
             String endpointHost, boolean editable, boolean dataLeavesIndia) {}
+
+    /** A preset as the UI shows it. */
+    public record ModeView(AgentMode mode, AgentPersona persona, Mood mood) {}
 
     public record CustomRequest(String name, String description, String instructions, AgentConditions conditions) {}
 
     public record RemoteRequest(String name, String description, String endpoint) {}
 
-    public record Catalog(List<AgentView> agents, List<String> tools, boolean remoteAllowed) {}
+    public record Catalog(List<AgentView> agents, List<String> tools, boolean remoteAllowed, boolean webAllowed, List<ModeView> modes) {}
 
     @GetMapping
     public Catalog list() {
-        return new Catalog(agents.all().stream().map(this::view).toList(), tools.names(), agents.remoteAllowed());
+        List<ModeView> modes = java.util.Arrays.stream(AgentMode.values()).filter(m -> m != AgentMode.CUSTOM)
+                .map(m -> new ModeView(m, AgentPersona.preset(m), AgentPersona.preset(m).mood())).toList();
+        return new Catalog(agents.all().stream().map(this::view).toList(), tools.names(), agents.remoteAllowed(),
+                !props.web().allowedHosts().isEmpty(), modes);
     }
 
     @GetMapping("/{id}/instructions")
@@ -83,6 +93,11 @@ public class AgentController {
         return ResponseEntity.of(agents.updateConditions(id, req).map(this::view));
     }
 
+    @PutMapping("/{id}/persona")
+    public ResponseEntity<AgentView> persona(@PathVariable String id, @RequestBody AgentPersona req) {
+        return ResponseEntity.of(agents.updatePersona(id, req).map(this::view));
+    }
+
     @PostMapping("/{id}/test")
     public ResponseEntity<Map<String, Object>> test(@PathVariable String id) {
         return agents.find(id).filter(a -> a.kind() == AgentKind.REMOTE)
@@ -102,8 +117,9 @@ public class AgentController {
         String host = a.endpoint() == null ? null : URI.create(a.endpoint()).getHost();
         boolean vertexAbroad = "vertex".equals(props.llm().provider()) && !props.llm().vertexLocation().startsWith("asia-south");
         boolean leaves = a.kind() == AgentKind.REMOTE || vertexAbroad;
+        AgentPersona p = a.persona();
         return new AgentView(a.id(), a.name(), a.description(), a.kind(), a.instructionsSource(), title,
-                text == null ? 0 : (int) text.lines().count(), text == null ? 0 : text.length(), a.conditions(), host,
-                a.editable(), leaves);
+                text == null ? 0 : (int) text.lines().count(), text == null ? 0 : text.length(), a.conditions(),
+                p, p.mood(), p.focusMode(), p.budget(), p.temperature(), host, a.editable(), leaves);
     }
 }

@@ -11,3 +11,5 @@ weekend:
   agents:
     allowed-hosts: 127.0.0.1                         # the built-in demo agent, loopback only (any port)
 project-agent-file: ${user.home}/CLAUDE.md               # read locally only; offline model, nothing leaves the Mac
+owner-profile-file: ${user.home}/.weekend/owner-profile.md      # your facts → pinned memories (private, local)
+owner-brand-dir: ${user.home}/.weekend/brand                    # your private brand pack (served at /brand/)

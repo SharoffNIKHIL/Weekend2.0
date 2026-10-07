@@ -19,5 +19,15 @@ public interface Tool {
     /** True when the tool changes something (creates, sends, deletes). */
     boolean writes();
 
+    /** True when calling the tool sends data outside Weekend (🔓 P7), e.g. web search or another agent. */
+    default boolean external() {
+        return false;
+    }
+
+    /** False hides the tool from the model (e.g. web search while no host is allowed). */
+    default boolean available() {
+        return true;
+    }
+
     ToolOutput execute(Map<String, Object> input, ToolContext context);
 }

@@ -2,6 +2,7 @@ package com.weekend.assistant.web;
 
 import com.weekend.assistant.agent.CostCapExceededException;
 import java.util.Map;
+import com.weekend.assistant.agent.ChatGuard;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -28,6 +29,13 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> badInput(IllegalArgumentException e) {
         String msg = e.getMessage() == null ? "invalid request" : e.getMessage();
         return ResponseEntity.badRequest().body(Map.of("error", msg.length() > 200 ? "invalid request" : msg));
+    }
+
+    @ExceptionHandler(ChatGuard.BusyException.class)
+    public ResponseEntity<Map<String, String>> busy(ChatGuard.BusyException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header("Retry-After", String.valueOf(e.retryAfter().toSeconds()))
+                .body(Map.of("error", e.getMessage()));
     }
 
     @ExceptionHandler(CostCapExceededException.class)

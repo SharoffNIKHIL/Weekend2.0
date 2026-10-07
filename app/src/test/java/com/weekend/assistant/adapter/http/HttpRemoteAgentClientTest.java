@@ -70,7 +70,7 @@ class HttpRemoteAgentClientTest {
 
     private AgentProfile remote(String path) {
         return new AgentProfile("remote-1", "Helper", null, AgentKind.REMOTE, null, null,
-                new AgentConditions(List.of(), true, false, 0), base + path, "hash", true, Instant.now());
+                new AgentConditions(List.of(), true, false, 0), null, base + path, "hash", true, Instant.now());
     }
 
     @Test
@@ -102,7 +102,7 @@ class HttpRemoteAgentClientTest {
         HttpRemoteAgentClient locked = new HttpRemoteAgentClient(TestFixtures.props());   // empty allow-list
         assertThatThrownBy(() -> locked.send(remote("/ok"), "x", null)).hasMessageContaining("no longer allowed");
         AgentProfile notRemote = new AgentProfile("c", "C", null, AgentKind.CUSTOM, "x", null, AgentConditions.DEFAULT,
-                null, null, true, Instant.now());
+                null, null, null, true, Instant.now());
         assertThatThrownBy(() -> client.send(notRemote, "x", null)).hasMessageContaining("not a remote agent");
     }
 }

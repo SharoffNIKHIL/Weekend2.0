@@ -49,6 +49,9 @@ public class VertexClaudeProvider implements LlmProvider {
                 .maxTokens(request.maxTokens())
                 .system(request.system())
                 .messages(toMessages(request.turns()));
+        if (request.temperature() != null) {
+            params.temperature(request.temperature());
+        }
         request.tools().forEach(t -> params.addTool(toTool(t)));
         Message res = client.messages().create(params.build());
 

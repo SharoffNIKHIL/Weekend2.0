@@ -1,6 +1,7 @@
 package com.weekend.assistant.web;
 
 import com.weekend.assistant.agent.AgentService;
+import com.weekend.assistant.agent.ChatGuard;
 import com.weekend.assistant.agent.ChatResult;
 import com.weekend.assistant.agent.PendingAction;
 import jakarta.validation.Valid;
@@ -22,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatController {
 
     private final AgentService agent;
+    private final ChatGuard guard;
 
-    public ChatController(AgentService agent) {
+    public ChatController(AgentService agent, ChatGuard guard) {
         this.agent = agent;
+        this.guard = guard;
     }
 
     public record ChatRequest(String conversationId, @NotBlank @Size(max = 8000) String message, Boolean thinkHarder,
@@ -34,7 +37,7 @@ public class ChatController {
 
     @PostMapping("/chat")
     public ChatResult chat(@Valid @RequestBody ChatRequest req) {
-        return agent.chat(req.conversationId(), req.message(), Boolean.TRUE.equals(req.thinkHarder()), req.agentId());
+        return guard.run(() -> agent.chat(req.conversationId(), req.message(), Boolean.TRUE.equals(req.thinkHarder()), req.agentId()));
     }
 
     @GetMapping("/pending")
