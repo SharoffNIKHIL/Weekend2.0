@@ -80,7 +80,7 @@ class UiPreviewSeederTest {
         assertThat(me).containsEntry("name", "Test Owner");
         assertThat((List<String>) me.get("highlights")).containsExactly("The owner is a DevOps engineer.");
         Map<String, Object> features = call("GET", "/api/features", null);
-        assertThat((List<?>) features.get("features")).hasSize(11);
+        assertThat((List<?>) features.get("features")).hasSize(12);
     }
 
     @Test

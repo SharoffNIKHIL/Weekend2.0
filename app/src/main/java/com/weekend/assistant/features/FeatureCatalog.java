@@ -29,6 +29,14 @@ public class FeatureCatalog {
             + "(no scripts, no external images or fonts), then one or two sentences about it.";
 
     private static final List<Feature> BUILT_IN = List.of(
+            feature("studio", "Studio", FeatureGroup.STUDIO, "film", "YouTube videos, Shorts and series",
+                    "Your editing room: researches a topic, writes the script, records the voice-over and renders upload-ready MP4s.",
+                    List.of("Ask only for what is missing: topic, length (or series size), voice and captions.",
+                            "Show the plan and wait for the owner's Start before rendering.",
+                            "Explain in your own words, cite sources in the description and credit every photo.",
+                            "Use only free-licence photos and the built-in music; never imitate a real person's voice."),
+                    List.of(Capability.RENDER, Capability.RESEARCH, Capability.VOICE, Capability.PHOTOS, Capability.MEMORY),
+                    new AgentPersona(AgentMode.CUSTOM, 4, 9, 7, 4, SearchRange.WEB, ApprovalRange.WRITES_AND_EXTERNAL), false, false),
             feature("optimal", "Optimal", FeatureGroup.EVERYDAY, "sparkle", "Balanced everyday help",
                     "Your all-round assistant: answers, plans, calculations, reminders and quick look-ups.",
                     List.of("Give the best answer in a sensible length; ask one question when something important is unclear.",

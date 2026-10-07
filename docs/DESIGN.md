@@ -1,7 +1,7 @@
 # Weekend 2.0 — Personal AI Assistant: Design Document
 
-> **Doc version:** 0.4.0 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
-> **Last updated:** 2026-10-03 (IST) · **Applies to:** prices and versions checked on 2026-10-02/03 · **Cloud:** Google Cloud (D4 decided 2026-10-03)
+> **Doc version:** 0.8.0 (DRAFT) · **Status:** Phase 0 — Requirements & architecture · **Owner:** Nikhil
+> **Last updated:** 2026-10-07 (IST) · **Applies to:** prices and versions checked on 2026-10-02/03 · **Cloud:** Google Cloud (D4 decided 2026-10-03)
 > **Currency:** USD 1 = INR 96.3 (mid-market, 2026-10-02, [Trading Economics](https://tradingeconomics.com/india/currency)). All INR figures are rounded.
 
 **D4 (cloud) is decided: Google Cloud** ([ADR-0001](adr/ADR-0001-d4-cloud-provider-gcp.md)). **D2 (model) is decided: Claude on Vertex AI, global endpoint, with a copy of every exchange in our database** ([ADR-0002](adr/ADR-0002-d2-model-claude-vertex-global.md)). Every other recommendation is **PROVISIONAL** until the owner decides it. Decisions are made in a fixed order: D1 → D2 → D4 → D5 → D6 → D3 (see §6).
@@ -10,10 +10,12 @@
 
 ## Document release notes
 
+
 Newest first. Every change to this document adds a row here. Feature releases have their own notes in §23.
 
 | Doc version | Date (IST) | Type | Summary | Sections changed |
 |---|---|---|---|---|
+| 0.8.0 | 2026-10-07 | Major | **Purpose: YouTube video studio** ([ADR-0003](adr/ADR-0003-studio-video-assistant.md)). Brief wizard (asks only what is missing, plan before Start), Claude scripts with optional Claude web search and citations, Google Cloud TTS voice (macOS voice for drafts only), Commons photos (CC0/PD/CC BY only), ffmpeg MP4 (H.264 High + AAC, +faststart), signed expiring media links, editing-room home page, Studio library. New data exits S1–S3, all off until approved | 1, 5.4, 7 |
 | 0.7.0 | 2026-10-07 | Minor | **One agent, many features.** Removed multi-agent support (custom, CLAUDE.md and remote agents, agent inbox). 11 features (Optimal, Hard, Smooth, Focused, Research, Coding, Financial, Designing, Drawing, Image, Notes) set guidelines, persona and attached plugins/connectors. Claude vision for attached images (never stored); original SVG art with 4K PNG export (Claude only, no other image model). Notion connector (off until token). Website-style landing ("Hi <name>") → feature page → chat, with view transitions and staggered reveals | 7, 12, 13, 15 |
 | 0.6.0 | 2026-10-07 | Minor | **Persona, focus mode, math, web.** Per-agent persona (humor, truth, focus, efficiency 1–5, search range, approval range) with presets Funny/Disciplined/Work/Browse and moods happy/serious/calm/curious; efficiency picks model, steps, tokens and context; High/Max = focus mode (helmet docks on the chat box). Local exact math tools; web search (MediaWiki) off until a host is allowed (🔓). Owner profile file → pinned memories always in context (🔓 to Vertex). Private brand pack served from a local folder (owner's Iron-Man-style art never committed). High pressure: concurrency guard (503 + Retry-After) and model retries with backoff | 7, 13, 15 |
 | 0.5.0 | 2026-10-06 | Minor | **UI v3 and agents.** Home (category tiles, folders, up next); tasks, folders, approvals queue, payments (tracking only, never pays, card numbers refused), agent messages, in-app notifications (P5: 30 days; messages 365 days; P6 export/delete-all cover all of it). Agents: built-in, custom (owner instructions after the fixed rules + conditions), a config agent reading the owner's CLAUDE.md, remote agents over weekend-agent/1 (🔓 every message needs approval; allow-listed hosts only; inbound token stored as a hash). Brand: one colour (Electric Blue #1D5BFF) and an original helmet mascot (Marvel's Iron Man design not used: trademark/copyright, public repo). Browser E2E tests in CI | 13, 15 |

@@ -8,6 +8,9 @@ COPY src ./src
 RUN mvn -B -q -DskipTests package
 
 FROM eclipse-temurin:17-jre-noble@sha256:bb8d601e02cec0e22f49b6f5d803dadc7db58ab692fa77909fb604d58187c7ed
+# Weekend Studio renders MP4s with ffmpeg (H.264 + AAC); fontconfig/fonts for the frame painter.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system app && useradd --system --gid app --home /app --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build --chown=app:app /src/target/weekend-assistant.jar app.jar

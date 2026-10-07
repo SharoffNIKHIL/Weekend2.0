@@ -5,7 +5,7 @@
 const TZ = "Asia/Kolkata";
 const USD_TO_INR = 96.12; // display-only estimate; same FX as the project tracker (2026-10-02)
 const DELETE_PHRASE = "DELETE ALL MY DATA";
-const VIEWS = ["home", "feature", "chat", "day", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings", "folder"];
+const VIEWS = ["home", "feature", "chat", "library", "day", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings", "folder"];
 const KINDS = { FACT: ["Fact", "accent"], PREFERENCE: ["Preference", ""], TASK: ["Task", ""] };
 const FOLDER_ICONS = ["folder", "home", "work", "money", "health", "travel", "code", "cart", "star", "book"];
 const NOTE_ICONS = { REMINDER: "bell", TASK: "task", APPROVAL: "approve", PAYMENT: "card", MESSAGE: "mail", SYSTEM: "sparkle" };
@@ -16,6 +16,7 @@ const state = {
   folders: [], taskFilter: "OPEN", folderId: null, logoSrc: "logo.svg",
 };
 const FEATURE_EXAMPLES = {
+  studio: ["Make a 45 sec Short about the arctic fox", "Create 15 × 45 sec Shorts covering the whole of Kubernetes", "Build a 2 min video about black holes with voice and captions"],
   optimal: ["What should I focus on today?", "calculate 18% GST on 42,500", "Remind me to renew the passport"],
   hard: ["solve x^3 - 6x^2 + 11x - 6 = 0", "calculate (1 + 0.07)^30 * 250000", "stats 12 15 9 22 17 31"],
   smooth: ["Plan a relaxed Sunday for me", "Tell me something fun about Bengaluru", "Remember that I like filter coffee"],
@@ -509,8 +510,11 @@ async function loadHome() {
   $("brand-sub").textContent = name ? name + "'s assistant" : "Your private assistant";
   const about = $("about");
   about.replaceChildren(...(me ? me.highlights.map((h, i) => el("li", { style: "--i:" + i, text: h })) : []));
+  loadStudioHome();
   $("features-everyday").replaceChildren(...state.features.filter((f) => f.group === "EVERYDAY").map(featureCard));
   $("features-workspace").replaceChildren(...state.features.filter((f) => f.group === "WORKSPACE").map((f, i) => featureCard(f, i + 4)));
+  const named = name ? "Hi " + name + "." : null;
+  if (named) $("ask").textContent = "What are we making today, " + name + "?";
   const h = await refreshCounts();
   if (h) {
     const c = h.counts;
@@ -537,7 +541,7 @@ async function openFeature(id) {
   if (!f) { location.hash = "home"; return; }
   state.pageFeature = f.id;
   $("f-icon").replaceChildren(featureIcon(f, "f-ic big"));
-  $("f-group").textContent = f.group === "EVERYDAY" ? "How I think" : "Workspace";
+  $("f-group").textContent = f.group === "EVERYDAY" ? "How I think" : f.group === "STUDIO" ? "Editing room" : "Workspace";
   $("f-name").textContent = f.name;
   $("f-tagline").textContent = f.tagline;
   $("f-desc").textContent = f.description;
@@ -790,6 +794,7 @@ async function send(text) {
     const reply = p && r.reply.trim() === p.summary.trim() ? "I need your OK before I do this." : r.reply;
     const row = addAssistant(reply, tags);
     if (p) row.querySelector(".body").append(pendingCard(p));
+    if (r.studio) row.querySelector(".body").append(...studioNodes(r.studio));
     state.costUsd += cost;
     $("cost-pill").hidden = state.costUsd <= 0;
     $("cost-pill").textContent = "This tab: " + money(state.costUsd);
@@ -916,6 +921,160 @@ async function deleteAll(event) {
 }
 
 // ---------- navigation with transitions ----------
+// ---------- Weekend Studio (videos) ----------
+/** Opens a Studio chat and sends the first message. */
+function startStudio(text) {
+  setFeature("studio");
+  newChat();
+  location.hash = "chat";
+  setTimeout(() => send(text), 350);
+}
+
+async function loadStudioHome() {
+  const room = $("edit-room");
+  if (motionOn()) requestAnimationFrame(() => setTimeout(() => room.classList.add("open"), 60)); else room.classList.add("open");
+  clearInterval(loadStudioHome.timer);
+  const started = Date.now();
+  const tick = () => {
+    const s = Math.floor((Date.now() - started) / 1000);
+    $("room-clock").textContent = "REC " + [s / 3600, (s / 60) % 60, s % 60].map((v) => String(Math.floor(v)).padStart(2, "0")).join(":");
+  };
+  tick();
+  loadStudioHome.timer = setInterval(() => { if (state.view && state.view.id === "view-home") tick(); }, 1000);
+  const studio = state.features.find((f) => f.id === "studio");
+  if (studio) {
+    $("studio-status").replaceChildren(...studio.capabilities.filter((c) => c.id !== "MEMORY").map((c) => el("li", {
+      class: "cap-pill" + (c.available ? "" : " off"), title: c.available ? (c.reason || c.description) : c.reason }, [
+      icon({ RENDER: "film", RESEARCH: "globe", VOICE: "mic", PHOTOS: "eye" }[c.id] || "plug", "ic sm"),
+      c.name + (c.available ? "" : " · off"),
+    ])));
+    const live = studio.capabilities.find((c) => c.id === "RENDER");
+    $("on-air").classList.toggle("live", !!(live && live.available));
+  }
+  try {
+    const projects = await api("/api/studio/projects");
+    const n = projects.reduce((a, p) => a + p.jobs.filter((j) => j.status === "READY").length, 0);
+    $("library-count").textContent = n ? n + (n === 1 ? " video" : " videos") : "Your videos";
+  } catch { /* library count is decoration */ }
+}
+
+function studioNodes(sr) {
+  const nodes = [];
+  if (sr.plan && sr.plan.length) {
+    nodes.push(el("ol", { class: "studio-plan" }, sr.plan.map((p) => el("li", { text: p.replace(/^\d+\.\s*/, "") }))));
+  }
+  if (sr.options && sr.options.length) {
+    const box = el("div", { class: "studio-options" });
+    sr.options.forEach((o, i) => box.append(el("button", {
+      type: "button", class: "chip option" + (sr.kind === "CONFIRM" && i === 0 ? " primary" : ""),
+      onclick: () => { box.querySelectorAll("button").forEach((b) => (b.disabled = true)); send(o); },
+    }, [sr.kind === "CONFIRM" && i === 0 ? icon("play", "ic sm") : null, o])));
+    nodes.push(box);
+  }
+  if (sr.kind === "STARTED" && sr.projectId) nodes.push(progressCard(sr.projectId));
+  return nodes;
+}
+
+function fmtSeconds(s) {
+  if (s == null) return "";
+  const v = Math.round(s);
+  return v < 60 ? v + " s" : Math.floor(v / 60) + ":" + String(v % 60).padStart(2, "0");
+}
+
+function jobRow(j) {
+  const done = j.status === "READY" || j.status === "FAILED";
+  return el("div", { class: "job " + j.status.toLowerCase(), "data-job": j.id }, [
+    el("div", { class: "job-head" }, [
+      el("strong", { text: (j.total > 1 ? j.number + ". " : "") + j.title }),
+      el("small", { text: j.status === "FAILED" ? "Failed: " + (j.error || "unknown error") : done ? "" : j.stage + " · " + j.progress + "%" }),
+    ]),
+    done ? null : el("div", { class: "bar", role: "progressbar", "aria-valuenow": String(j.progress), "aria-valuemin": "0", "aria-valuemax": "100" },
+      el("i", { style: "width:" + j.progress + "%" })),
+  ]);
+}
+
+function videoCard(j, format) {
+  const f = j.files;
+  const meta = j.metadata || {};
+  const video = el("video", { controls: "", preload: "metadata", playsinline: "", poster: f.thumbnail, src: f.video,
+    "aria-label": "Video: " + j.title });
+  const copy = (label, value) => iconButton("copy", label, async () => {
+    try { await navigator.clipboard.writeText(value || ""); toast("Copied " + label.toLowerCase().replace("copy ", "")); } catch { toast("Copy not allowed here", "error"); }
+  });
+  const tags = [tag(fmtSeconds(j.seconds), "", "clock"), tag(format === "SHORT" ? "Short · 9:16" : "16:9", "", "film")];
+  if (j.voice) tags.push(tag(j.voice, j.draftVoice ? "warn" : "ok", "mic"));
+  if (j.draftVoice) tags.push(tag("draft voice: not for monetised uploads", "warn"));
+  if (j.draftScript) tags.push(tag("offline draft script", "warn"));
+  return el("article", { class: "video-card " + (format === "SHORT" ? "vertical" : "landscape"), "data-job": j.id }, [
+    el("div", { class: "player" }, video),
+    el("div", { class: "v-body" }, [
+      el("h3", { text: (j.total > 1 ? "Part " + j.number + "/" + j.total + " · " : "") + (meta.title || j.title) }),
+      el("div", { class: "v-tags" }, tags),
+      meta.description ? el("details", { class: "v-desc" }, [el("summary", { text: "Description, sources and credits" }), el("pre", { text: meta.description })]) : null,
+      el("div", { class: "v-actions" }, [
+        el("a", { class: "btn primary", href: f.video + "&download=1", download: "" }, [icon("download", "ic sm"), "MP4"]),
+        el("a", { class: "btn", href: f.captions + "&download=1", download: "" }, [icon("cc", "ic sm"), "Captions"]),
+        copy("Copy title", meta.title || j.title),
+        copy("Copy description", meta.description),
+      ]),
+    ]),
+  ]);
+}
+
+/** Live progress for one project; turns each finished job into a player. Stops polling when done or removed. */
+function progressCard(projectId) {
+  const card = el("div", { class: "studio-progress", "data-project": projectId }, el("p", { class: "hint", text: "Starting…" }));
+  let tries = 0;
+  const poll = async () => {
+    if (!card.isConnected && tries > 0) return;
+    tries++;
+    try {
+      const p = await api("/api/studio/projects/" + encodeURIComponent(projectId));
+      const pending = p.jobs.filter((j) => j.status === "QUEUED" || j.status === "WORKING");
+      const ready = p.jobs.filter((j) => j.status === "READY").length;
+      card.replaceChildren(
+        el("p", { class: "studio-sum" }, [icon("film", "ic sm"), ready + " of " + p.jobs.length + " ready" + (pending.length ? " · rendering…" : "")]),
+        ...p.jobs.map((j) => (j.status === "READY" ? videoCard(j, p.format) : jobRow(j))));
+      if (pending.length) setTimeout(poll, 1500);
+      else { refreshCounts(); if (ready) toast(ready === 1 ? "Your video is ready" : ready + " videos are ready"); }
+      scrollChat();
+    } catch (e) {
+      if (tries < 40) setTimeout(poll, 3000); else card.replaceChildren(el("p", { class: "hint", text: "Lost track of the render: open the Studio library." }));
+    }
+  };
+  setTimeout(poll, 400);
+  return card;
+}
+
+async function loadLibrary() {
+  const list = $("lib-list");
+  const projects = await api("/api/studio/projects");
+  if (!projects.length) {
+    list.replaceChildren(empty("No videos yet. Tell me what to make: a Short, a series, or a long video."));
+    return;
+  }
+  list.replaceChildren(...projects.map((p) => {
+    const ready = p.jobs.filter((j) => j.status === "READY");
+    const busy = p.jobs.some((j) => j.status === "QUEUED" || j.status === "WORKING");
+    const head = el("header", { class: "lib-head" }, [
+      el("div", {}, [
+        el("h2", { text: p.topic || "Untitled" }),
+        el("small", { text: (p.count > 1 ? p.count + " × " : "") + fmtSeconds(p.seconds) + " · " + (p.format === "SHORT" ? "Shorts" : "Video")
+          + " · " + (p.voice ? "voice" : "no voice") + (p.captions ? " + captions" : "") + " · " + relativeDay(new Date(p.createdAt)) }),
+      ]),
+      iconButton("trash", "Delete project", async () => {
+        if (!(await confirmDialog("Delete this project?", "Its videos, captions and thumbnails are removed permanently."))) return;
+        try { await del("/api/studio/projects/" + encodeURIComponent(p.id)); toast("Deleted"); loadLibrary(); } catch (e) { toast(e.message, "error"); }
+      }),
+    ]);
+    const body = busy ? progressCard(p.id) : el("div", { class: "lib-grid" }, [
+      ...ready.map((j) => videoCard(j, p.format)),
+      ...p.jobs.filter((j) => j.status === "FAILED").map(jobRow),
+    ]);
+    return el("section", { class: "lib-project" }, [head, body]);
+  }));
+}
+
 function motionOn() {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
   try { return localStorage.getItem("weekend.motion") !== "off"; } catch { return true; }
@@ -945,7 +1104,7 @@ function showView(hash) {
   const loaders = {
     home: loadHome, day: loadDay, tasks: loadTasks, reminders: loadReminders, approvals: loadApprovals,
     payments: loadPayments, messages: loadMessages, notifications: loadNotifications, memories: loadMemories,
-    settings: loadInfo, folder: () => loadFolder(arg), feature: () => openFeature(arg),
+    settings: loadInfo, folder: () => loadFolder(arg), feature: () => openFeature(arg), library: loadLibrary,
   };
   if (loaders[name]) loaders[name]().catch((e) => { toast(e.message, "error"); if (name === "folder") location.hash = "day"; });
   if (name === "chat") setTimeout(() => $("input").focus({ preventScroll: true }), 200);
@@ -962,6 +1121,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("new-chat").addEventListener("click", newChat);
   $("feature-pill").addEventListener("click", () => toggleMenu());
   document.addEventListener("click", (e) => { if (!e.target.closest(".chat-title")) toggleMenu(false); });
+  $("studio-prompt").addEventListener("submit", (e) => { e.preventDefault(); const t = $("studio-input").value.trim(); $("studio-input").value = ""; startStudio(t || "Make a video"); });
+  document.querySelectorAll(".s-tile[data-prompt]").forEach((b) => b.addEventListener("click", () => startStudio(b.dataset.prompt)));
+  $("lib-new").addEventListener("click", () => { location.hash = "home"; setTimeout(() => $("studio-input").focus(), 250); });
   $("f-start").addEventListener("click", () => { setFeature(state.pageFeature); newChat(); location.hash = "chat"; });
   $("attach").addEventListener("click", () => $("file").click());
   $("file").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });

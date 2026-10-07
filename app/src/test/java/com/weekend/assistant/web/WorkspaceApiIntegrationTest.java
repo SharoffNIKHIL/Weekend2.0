@@ -113,13 +113,18 @@ class WorkspaceApiIntegrationTest {
 
     @Test
     void featuresCarryCapabilitiesPersonaAndInstructions() throws Exception {
-        mvc.perform(as(get("/api/features"))).andExpect(jsonPath("$.features.length()").value(11))
-                .andExpect(jsonPath("$.features[0].id").value("optimal")).andExpect(jsonPath("$.modes.length()").value(4));
+        mvc.perform(as(get("/api/features"))).andExpect(jsonPath("$.features.length()").value(12))
+                .andExpect(jsonPath("$.features[0].id").value("studio")).andExpect(jsonPath("$.features[1].id").value("optimal")).andExpect(jsonPath("$.modes.length()").value(4));
         mvc.perform(as(get("/api/features/notes"))).andExpect(jsonPath("$.capabilities[0].id").value("NOTION"))
                 .andExpect(jsonPath("$.capabilities[0].kind").value("CONNECTOR")).andExpect(jsonPath("$.capabilities[0].available").value(false))
                 .andExpect(jsonPath("$.capabilities[0].reason").value(org.hamcrest.Matchers.containsString("WEEKEND_NOTION_TOKEN")));
         mvc.perform(as(get("/api/features/image"))).andExpect(jsonPath("$.acceptsImages").value(true)).andExpect(jsonPath("$.makesArt").value(true))
                 .andExpect(jsonPath("$.capabilities[0].id").value("VISION")).andExpect(jsonPath("$.capabilities[0].available").value(true));
+        mvc.perform(as(get("/api/features/studio"))).andExpect(jsonPath("$.group").value("STUDIO"))
+                .andExpect(jsonPath("$.capabilities[0].id").value("RENDER")).andExpect(jsonPath("$.capabilities[0].kind").value("PLUGIN"))
+                .andExpect(jsonPath("$.capabilities[1].id").value("RESEARCH")).andExpect(jsonPath("$.capabilities[1].available").value(false))
+                .andExpect(jsonPath("$.capabilities[1].reason").value(org.hamcrest.Matchers.containsString("WEEKEND_STUDIO_WEB_SEARCHES")))
+                .andExpect(jsonPath("$.capabilities[3].reason").value(org.hamcrest.Matchers.containsString("commons.wikimedia.org")));
         mvc.perform(as(get("/api/features/ghost"))).andExpect(status().isNotFound());
 
         mvc.perform(as(put("/api/features/coding/instructions").content("{\"text\":\"Prefer pytest.\"}")))

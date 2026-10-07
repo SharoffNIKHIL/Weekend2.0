@@ -28,11 +28,17 @@ public class FeatureController {
     private final FeatureCatalog features;
     private final ToolRegistry tools;
     private final WeekendProperties props;
+    private com.weekend.assistant.studio.StudioService studio;
 
     public FeatureController(FeatureCatalog features, ToolRegistry tools, WeekendProperties props) {
         this.features = features;
         this.tools = tools;
         this.props = props;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setStudio(com.weekend.assistant.studio.StudioService studio) {
+        this.studio = studio;
     }
 
     /** A plugin or connector and whether it works right now (and why not). */
@@ -90,12 +96,36 @@ public class FeatureController {
     }
 
     private CapabilityView capability(Capability c) {
+        switch (c) {
+            case RENDER, RESEARCH, VOICE, PHOTOS -> {
+                return studioCapability(c);
+            }
+            default -> { }
+        }
         boolean ok = c.tools().stream().allMatch(t -> tools.find(t).map(Tool::available).orElse(false));
         String reason = ok ? null : switch (c) {
             case WEB -> "Off: allow a web host (WEEKEND_WEB_ALLOWED_HOSTS) after a security checkpoint";
             case NOTION -> "Off: connect Notion (WEEKEND_NOTION_TOKEN) after a security checkpoint";
             default -> "Not available";
         };
+        return new CapabilityView(c.name(), c.label(), c.kind(), c.description(), ok, reason);
+    }
+
+    private CapabilityView studioCapability(Capability c) {
+        com.weekend.assistant.studio.StudioService.Health h = studio == null ? null : studio.health();
+        boolean ok = h != null && switch (c) {
+            case RENDER -> h.render();
+            case RESEARCH -> h.research();
+            case VOICE -> h.voice();
+            default -> h.photos();
+        };
+        String reason = ok ? (c == Capability.VOICE && !h.voiceCommercial() ? "Draft voice (" + h.voiceLabel() + "): not for monetised uploads" : null)
+                : switch (c) {
+                    case RENDER -> "Off: install ffmpeg (brew install ffmpeg) or set WEEKEND_FFMPEG";
+                    case RESEARCH -> "Off: offline draft scripts until Claude web search is enabled (WEEKEND_STUDIO_WEB_SEARCHES) after a security checkpoint";
+                    case VOICE -> "Off: set WEEKEND_TTS=google (or say for drafts) after a security checkpoint";
+                    default -> "Off: allow commons.wikimedia.org and upload.wikimedia.org (WEEKEND_WEB_ALLOWED_HOSTS) after a security checkpoint";
+                };
         return new CapabilityView(c.name(), c.label(), c.kind(), c.description(), ok, reason);
     }
 }

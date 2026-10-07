@@ -8,6 +8,7 @@ import com.anthropic.models.messages.Base64ImageSource;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.ImageBlockParam;
 import com.anthropic.models.messages.TextBlockParam;
+import com.anthropic.models.messages.WebSearchTool20250305;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
@@ -17,6 +18,7 @@ import com.anthropic.models.messages.ToolUseBlockParam;
 import com.anthropic.vertex.backends.VertexBackend;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.weekend.assistant.port.LlmProvider;
+import com.weekend.assistant.port.LlmProvider.Citation;
 import com.weekend.assistant.port.LlmProvider.ImagePart;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -57,16 +59,26 @@ public class VertexClaudeProvider implements LlmProvider {
             params.temperature(request.temperature());
         }
         request.tools().forEach(t -> params.addTool(toTool(t)));
+        if (request.webSearches() > 0) {
+            // Claude's server-side web search; on Google Cloud only the basic version is available.
+            params.addTool(WebSearchTool20250305.builder().maxUses((long) request.webSearches()).build());
+        }
         Message res = client.messages().create(params.build());
 
         StringBuilder text = new StringBuilder();
         List<ToolUse> uses = new ArrayList<>();
+        List<Citation> cites = new ArrayList<>();
         for (ContentBlock block : res.content()) {
-            block.text().ifPresent(t -> text.append(t.text()));
+            block.text().ifPresent(t -> {
+                text.append(t.text());
+                t.citations().ifPresent(cs -> cs.forEach(c -> c.webSearchResultLocation()
+                        .ifPresent(w -> cites.add(new Citation(w.title().orElse(w.url()), w.url())))));
+            });
             block.toolUse().ifPresent(u -> uses.add(new ToolUse(u.id(), u.name(), toMap(u._input()))));
         }
         String stop = res.stopReason().map(Object::toString).orElse("unknown");
-        return new LlmResponse(text.toString(), uses, stop, (int) res.usage().inputTokens(), (int) res.usage().outputTokens());
+        return new LlmResponse(text.toString(), uses, stop, (int) res.usage().inputTokens(), (int) res.usage().outputTokens(),
+                cites.stream().distinct().toList());
     }
 
     static List<MessageParam> toMessages(List<Turn> turns) {

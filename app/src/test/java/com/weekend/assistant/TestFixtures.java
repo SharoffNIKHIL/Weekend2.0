@@ -28,26 +28,32 @@ public final class TestFixtures {
                 new WeekendProperties.Retention(Duration.ofDays(365), Duration.ofDays(180), Duration.ofDays(90), Duration.ofDays(730),
                         Duration.ofDays(30), Duration.ofDays(365)),
                 new WeekendProperties.Security(KEY, Duration.ofHours(12), true),
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     /** Same defaults with other pressure, web or owner settings. */
     public static WeekendProperties with(WeekendProperties p, WeekendProperties.Pressure pressure, WeekendProperties.Web web,
             WeekendProperties.Owner owner) {
         return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), p.security(), p.notion(),
-                pressure, web, owner);
+                pressure, web, owner, p.studio());
     }
 
     public static WeekendProperties withNotion(WeekendProperties.Notion notion) {
         WeekendProperties p = props();
         return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), p.security(), notion,
-                p.pressure(), p.web(), p.owner());
+                p.pressure(), p.web(), p.owner(), p.studio());
+    }
+
+    public static WeekendProperties withStudio(WeekendProperties.Studio studio) {
+        WeekendProperties p = props();
+        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), p.security(), p.notion(),
+                p.pressure(), p.web(), p.owner(), studio);
     }
 
     public static WeekendProperties withSecurity(WeekendProperties.Security security) {
         WeekendProperties p = props();
         return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), security, p.notion(),
-                p.pressure(), p.web(), p.owner());
+                p.pressure(), p.web(), p.owner(), p.studio());
     }
 
     /** A solid-colour PNG, base64-encoded (no data-URL prefix). */

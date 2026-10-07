@@ -19,11 +19,13 @@ class FeatureCatalogTest {
     private final FeatureCatalog catalog = new FeatureCatalog(new SecretFilter(), audit);
 
     @Test
-    void elevenWellFormedFeatures() {
+    void twelveWellFormedFeatures() {
         List<Feature> all = catalog.all();
-        assertThat(all).extracting(Feature::id).containsExactly("optimal", "hard", "smooth", "focused", "research", "coding",
+        assertThat(all).extracting(Feature::id).containsExactly("studio", "optimal", "hard", "smooth", "focused", "research", "coding",
                 "financial", "designing", "drawing", "image", "notes");
         assertThat(all).filteredOn(f -> f.group() == FeatureGroup.EVERYDAY).hasSize(4);
+        assertThat(all).filteredOn(f -> f.group() == FeatureGroup.STUDIO).extracting(Feature::id).containsExactly("studio");
+        assertThat(catalog.find("studio").orElseThrow().feature().capabilities()).containsExactly("RENDER", "RESEARCH", "VOICE", "PHOTOS", "MEMORY");
         assertThat(all).allSatisfy(f -> {
             assertThat(f.guidelines()).isNotEmpty();
             assertThat(f.capabilities()).isNotEmpty().allSatisfy(c -> Capability.valueOf(c));

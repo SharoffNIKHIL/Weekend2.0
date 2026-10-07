@@ -25,7 +25,7 @@ class PersonaInChatTest {
             new WeekendProperties.Llm("local", "", "global", "claude-haiku-4-5@20251001", "claude-sonnet-5", 4096,
                     new BigDecimal("1.00"), new BigDecimal("5.00"), new BigDecimal("2.00"), new BigDecimal("10.00")),
             new WeekendProperties.Agent(10, 8, 20, 1200, new BigDecimal("0.62")), TestFixtures.props().retention(),
-            TestFixtures.props().security(), null, null, null, null);
+            TestFixtures.props().security(), null, null, null, null, null);
     private final Harness h = new Harness(llm, props);
 
     private void persona(AgentPersona p) {

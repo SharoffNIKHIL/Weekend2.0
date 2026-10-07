@@ -8,5 +8,9 @@ weekend:
     provider: local
   security:
     require-session: false
+  studio:
+    tts:
+      provider: ${WEEKEND_TTS:say}                   # preview: macOS draft voice (not for monetised uploads)
 owner-profile-file: ${user.home}/.weekend/owner-profile.md      # your facts → pinned memories (private, local)
 owner-brand-dir: ${user.home}/.weekend/brand                    # your private brand pack (served at /brand/)
+studio-media-dir: ${user.home}/.weekend/studio                  # rendered videos (private, local)
