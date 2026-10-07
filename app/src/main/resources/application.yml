@@ -53,6 +53,20 @@ weekend:
   owner:                                             # private local files, never committed
     profile-file: ${WEEKEND_OWNER_PROFILE:${owner-profile-file:}}
     brand-dir: ${WEEKEND_BRAND_DIR:${owner-brand-dir:}}
+  studio:                                            # Weekend Studio — YouTube video creation
+    media-dir: ${WEEKEND_STUDIO_MEDIA:${studio-media-dir:}}   # rendered videos (private); default: system temp
+    ffmpeg: ${WEEKEND_FFMPEG:ffmpeg}
+    fps: 30
+    scale: 1.0
+    render-threads: 2
+    retention: 30d                                   # P5: rendered videos are deleted after 30 days
+    web-searches: ${WEEKEND_STUDIO_WEB_SEARCHES:0}    # Claude web searches per research step (🔓, paid) — 0 = off until approved
+    music: true                                      # quiet background pad generated in-app (royalty-free)
+    tts:
+      provider: ${WEEKEND_TTS:none}                  # none | google (Cloud TTS, security checkpoint) | say (macOS drafts only)
+      voice: en-IN-Neural2-B
+      language-code: en-IN
+      speaking-rate: 1.0
   security:
     session-key: ${WEEKEND_SESSION_KEY:}             # from Secret Manager; never committed
     session-ttl: 12h

@@ -76,6 +76,25 @@ Plugins run inside Weekend (Clock, Memory, Tasks, Math, Payments, **Image analys
 - **Art (Claude only):** Claude cannot paint pixels; Drawing/Designing/Image ask it for **original SVG**, which the app sanitises and renders, with **4K PNG** (3840 px canvas) and SVG download.
 - **Notion connector:** `WEEKEND_NOTION_TOKEN` (internal integration secret, Secret Manager) + `WEEKEND_NOTION_PARENT_PAGE`; search pages and save notes, both asking first. Notion-Version 2022-06-28 (verify on first enable).
 
+## Weekend Studio (YouTube videos)
+Ask in any chat, or from the home page's editing room: *"create me a video on Kubernetes"*, *"15 × 45 sec Shorts covering the
+whole of Kubernetes"*, *"build me a 2 min video about the arctic fox"*. Weekend asks only what is missing (length or series size,
+voice and captions), shows the plan, and renders only after you tap **Start**. Each finished video appears in the chat with a
+player, **MP4** and **captions (.srt)** downloads, and a ready title and description (sources and photo credits included).
+The **Studio** tab lists every project (kept 30 days).
+
+| Part | Default | Turn on (after its security checkpoint, ADR-0003) |
+|---|---|---|
+| Renderer (ffmpeg) | on if `ffmpeg` is installed (`brew install ffmpeg`) | `WEEKEND_FFMPEG` for another path |
+| Scripts | offline drafts (labelled) | Claude: `WEEKEND_LLM_PROVIDER=vertex` |
+| Web research | off | `WEEKEND_STUDIO_WEB_SEARCHES=3` (Claude web search, paid per search, 🔓 S2) |
+| Voice | none (`say` in the UI env: drafts only, not for monetised uploads) | `WEEKEND_TTS=google` (Cloud TTS, 🔓 S1) |
+| Photos | off | add `commons.wikimedia.org,upload.wikimedia.org` to `WEEKEND_WEB_ALLOWED_HOSTS` (🔓 S3) |
+
+Output: H.264 High + AAC 48 kHz, `+faststart`; Shorts 1080×1920, videos 1920×1080; media in `WEEKEND_STUDIO_MEDIA`
+(UI env: `~/.weekend/studio`). API: `GET /api/studio/projects`, `GET|DELETE /api/studio/projects/{id}`, `GET /api/studio/status`;
+files via signed `/media/{job}/{file}?exp=…&sig=…` links (6 h).
+
 ## Configuration (environment variables)
 | Variable | Default | Meaning |
 |---|---|---|

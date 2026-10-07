@@ -1,7 +1,8 @@
 package com.weekend.assistant.domain;
 
-/** EVERYDAY = how Weekend answers (Optimal, Hard, Smooth, Focused); WORKSPACE = what it works on (Research, Coding …). */
+/** STUDIO = the video studio; EVERYDAY = how Weekend answers (Optimal, Hard …); WORKSPACE = what it works on (Research, Coding …). */
 public enum FeatureGroup {
+    STUDIO,
     EVERYDAY,
     WORKSPACE
 }

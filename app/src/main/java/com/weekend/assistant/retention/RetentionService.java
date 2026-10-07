@@ -23,6 +23,7 @@ public class RetentionService {
     private final AuditLog audit;
     private final WeekendProperties props;
     private final Clock clock;
+    private java.util.List<OwnerData> extra = java.util.List.of();
 
     public RetentionService(MessageRepository messages, MemoryRepository memories, ToolCallRepository toolCalls,
             NotificationService notifications, InboxService inbox, AuditLog audit, WeekendProperties props, Clock clock) {
@@ -36,6 +37,11 @@ public class RetentionService {
         this.clock = clock;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setOwnerData(java.util.List<OwnerData> extra) {
+        this.extra = java.util.List.copyOf(extra);
+    }
+
     public RetentionReport run() {
         Instant now = clock.instant();
         int msgs = messages.deleteOlderThan(now.minus(props.retention().messages()));
@@ -43,11 +49,13 @@ public class RetentionService {
         int calls = toolCalls.deleteOlderThan(now.minus(props.retention().toolCalls()));
         int notes = notifications.deleteOlderThan(now.minus(props.retention().notifications()));
         int inboxMsgs = inbox.deleteOlderThan(now.minus(props.retention().inboxMessages()));
+        java.util.Map<String, Integer> other = new java.util.LinkedHashMap<>();
+        extra.forEach(o -> other.put(o.name(), o.purgeExpired(now)));
         audit.append("system", "retention.run", "messages=" + msgs + ",memories=" + mems + ",toolCalls=" + calls
-                + ",notifications=" + notes + ",inboxMessages=" + inboxMsgs);
-        return new RetentionReport(msgs, mems, calls, notes, inboxMsgs);
+                + ",notifications=" + notes + ",inboxMessages=" + inboxMsgs + (other.isEmpty() ? "" : "," + other));
+        return new RetentionReport(msgs, mems, calls, notes, inboxMsgs, other);
     }
 
     public record RetentionReport(int messagesDeleted, int memoriesDeleted, int toolCallsDeleted,
-            int notificationsDeleted, int inboxMessagesDeleted) {}
+            int notificationsDeleted, int inboxMessagesDeleted, java.util.Map<String, Integer> otherDeleted) {}
 }

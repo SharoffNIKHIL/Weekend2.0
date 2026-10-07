@@ -62,6 +62,12 @@
     <symbol id="i-clip" viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+    <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6"/></symbol>
+    <symbol id="i-series" viewBox="0 0 24 24"><rect x="3" y="6" width="5" height="12" rx="1"/><rect x="9.5" y="6" width="5" height="12" rx="1"/><rect x="16" y="6" width="5" height="12" rx="1"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></symbol>
     <symbol id="i-day" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
     <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></symbol>
   </svg>
@@ -75,6 +81,7 @@
       <nav class="nav" aria-label="Sections">
         <button data-view="home" aria-current="page"><svg class="ic"><use href="#i-home"/></svg><span>Home</span></button>
         <button data-view="chat"><svg class="ic"><use href="#i-chat"/></svg><span>Chat</span></button>
+        <button data-view="library"><svg class="ic"><use href="#i-film"/></svg><span>Studio</span></button>
         <button data-view="day"><svg class="ic"><use href="#i-day"/></svg><span>Your day</span></button>
         <p class="nav-label">Organise</p>
         <button data-view="tasks" class="secondary"><svg class="ic"><use href="#i-task"/></svg><span>Tasks</span><b class="count" data-count="tasks" hidden></b></button>
@@ -97,15 +104,37 @@
       <section class="view landing" id="view-home" aria-labelledby="greeting">
         <div class="view-body">
           <div class="landing-inner">
-            <header class="landing-hero">
-              <div class="hero-helmet" id="hero-helmet" aria-hidden="true"></div>
-              <h1 class="hello"><span id="greeting">Hi.</span></h1>
-              <p class="ask" id="ask">What feature do you want to explore?</p>
-              <ul class="about" id="about" aria-label="About you"></ul>
+            <header class="landing-hero edit-room" id="edit-room">
+              <div class="doors" aria-hidden="true"><span class="door left"><i></i></span><span class="door right"><i></i></span></div>
+              <div class="room">
+                <div class="strip top" aria-hidden="true"></div>
+                <div class="room-top">
+                  <span class="on-air" id="on-air" aria-label="Studio status">ON AIR</span>
+                  <span class="room-clock" id="room-clock" aria-hidden="true">REC 00:00:00</span>
+                </div>
+                <div class="hero-helmet" id="hero-helmet" aria-hidden="true"></div>
+                <h1 class="hello"><span id="greeting">Hi.</span></h1>
+                <p class="ask" id="ask">What are we making today?</p>
+                <form class="studio-prompt" id="studio-prompt" autocomplete="off">
+                  <label class="sr-only" for="studio-input">Describe your video</label>
+                  <svg class="ic"><use href="#i-film"/></svg>
+                  <input id="studio-input" type="text" maxlength="300" placeholder="Make a 45 sec Short about the arctic fox…" />
+                  <button class="btn primary" type="submit"><svg class="ic sm"><use href="#i-play"/></svg>Create</button>
+                </form>
+                <div class="studio-tiles" id="studio-tiles" data-stagger>
+                  <button type="button" class="s-tile" data-prompt="Make a 45 sec Short" style="--i:0"><svg class="ic"><use href="#i-phone"/></svg><strong>New Short</strong><small>45–60 sec · 9:16</small></button>
+                  <button type="button" class="s-tile" data-prompt="Make a series of Shorts" style="--i:1"><svg class="ic"><use href="#i-series"/></svg><strong>Shorts series</strong><small>Up to 30 parts</small></button>
+                  <button type="button" class="s-tile" data-prompt="Make a 2 min video" style="--i:2"><svg class="ic"><use href="#i-film"/></svg><strong>Long video</strong><small>Up to 10 min · 16:9</small></button>
+                  <a class="s-tile" href="#library" style="--i:3"><svg class="ic"><use href="#i-play"/></svg><strong>Library</strong><small id="library-count">Your videos</small></a>
+                </div>
+                <ul class="studio-status" id="studio-status" aria-label="Studio plugins and connectors"></ul>
+                <div class="strip bottom" aria-hidden="true"></div>
+              </div>
             </header>
+            <ul class="about" id="about" aria-label="About you"></ul>
 
             <section class="feature-group" aria-labelledby="g-everyday">
-              <h2 id="g-everyday" class="section-title">How should I think?</h2>
+              <h2 id="g-everyday" class="section-title">Beyond the studio: how should I think?</h2>
               <div class="feature-grid everyday" id="features-everyday" data-stagger></div>
             </section>
             <section class="feature-group" aria-labelledby="g-work">
@@ -118,6 +147,19 @@
               <span><strong>Your day</strong><small id="day-summary">Tasks, reminders, approvals and payments</small></span>
               <svg class="ic"><use href="#i-arrow"/></svg>
             </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Studio library -->
+      <section class="view library" id="view-library" aria-labelledby="lib-title" hidden>
+        <header class="view-head">
+          <div><h1 id="lib-title">Studio library</h1><p class="sub">Every video you made, ready to download and upload. Kept for 30 days.</p></div>
+          <button class="btn primary" id="lib-new" type="button"><svg class="ic sm"><use href="#i-plus"/></svg>New video</button>
+        </header>
+        <div class="view-body">
+          <div class="inner wide">
+            <div class="lib-list" id="lib-list"></div>
           </div>
         </div>
       </section>

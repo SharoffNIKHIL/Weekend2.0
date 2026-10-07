@@ -103,13 +103,18 @@ const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 const reply = (needle) => `[...document.querySelectorAll("#messages .msg.assistant")].some((t) => t.textContent.includes(${q(needle)}))`;
 
-test("landing greets the owner and offers eleven features", async () => {
+test("landing is the editing room: greets the owner, studio tiles, plus eleven features", async () => {
   await viewport(1440, 900, false, false);
   await go("home");
   await waitFor(`document.querySelectorAll(".feature-card").length === 11`, "feature cards");
   await sleep(1200);
   assert(/^(Hi .+\.|Good \w+\.|Working late\?\.)$/.test(await text("#greeting")), "greeting: " + (await text("#greeting")));
-  eq(await text("#ask"), "What feature do you want to explore?", "question");
+  assert((await text("#ask")).startsWith("What are we making today"), "question: " + (await text("#ask")));
+  eq(await count("#studio-tiles .s-tile"), 4, "studio tiles");
+  assert(await js(`return document.getElementById("edit-room").classList.contains("open");`), "doors opened");
+  eq(await js(`return [...document.querySelectorAll("#studio-status .cap-pill")].map((c) => c.textContent.split(" · ")[0]).join(",");`),
+    "Video renderer,Web research (Claude),Voice-over,Licensed photos", "studio plugins and connectors");
+  assert(await js(`return document.querySelector(".strip.top").getBoundingClientRect().width === document.getElementById("edit-room").getBoundingClientRect().width;`), "film strip spans the room");
   eq(await count("#features-everyday .feature-card"), 4, "everyday features");
   eq(await count("#features-workspace .feature-card"), 7, "workspace features");
   eq(await js(`return [...document.querySelectorAll(".feature-card strong")].map((s) => s.textContent).join(",");`),
@@ -118,6 +123,34 @@ test("landing greets the owner and offers eleven features", async () => {
   assert((await text("#day-summary")).includes("7 open tasks"), "day summary");
   eq(await js(`return document.getElementById("view-home").classList.contains("entering") || getComputedStyle(document.getElementById("view-home")).opacity === "1";`), true, "view shown");
   await shot("01-landing");
+});
+
+test("studio: asks what is missing, shows the plan, renders an MP4 and drops it in the chat", async () => {
+  await viewport(1440, 900, false, false);
+  await go("home");
+  await waitFor(`!!document.getElementById("studio-input")`, "studio prompt");
+  await js(`document.getElementById("studio-input").value = "Make a 10 sec Short about the water cycle"; document.querySelector("#studio-prompt button").click();`);
+  await waitFor(`document.querySelectorAll(".studio-options .chip").length === 4`, "voice question with four answers");
+  assert(await js(`return ${reply("voice reading the script")};`), "asks about voice and captions");
+  await click('.studio-options .chip:nth-child(2)'); // Captions only
+  await waitFor(`!!document.querySelector(".chip.option.primary:not([disabled])")`, "plan with Start");
+  assert(await js(`return ${reply("10 sec Short on The water cycle")};`), "plan summary");
+  eq(await count(".studio-plan li"), 1, "one video planned");
+  await shot("02-studio-plan");
+  await click(".chip.option.primary:not([disabled])");
+  await waitFor(`!!document.querySelector(".studio-progress")`, "progress card");
+  const ffmpeg = await js(`return (await (await fetch("/api/studio/status", { headers: { Authorization: "Bearer " + sessionStorage.getItem("weekend.token") } })).json()).render;`);
+  if (ffmpeg) {
+    await waitFor(`!!document.querySelector(".studio-progress .video-card video")`, "finished video in the chat", 180000);
+    const src = await js(`return document.querySelector(".video-card video").getAttribute("src");`);
+    assert(/^\/media\/[0-9a-f-]+\/video\.mp4\?exp=\d+&sig=/.test(src), "signed media link: " + src);
+    const head = await js(`const r = await fetch(${q("")} + document.querySelector(".video-card video").getAttribute("src"), { headers: { Range: "bytes=0-15" } }); return r.status + " " + r.headers.get("content-type");`);
+    eq(head, "206 video/mp4", "video streams with ranges");
+    assert(await js(`return [...document.querySelectorAll(".video-card .v-actions a")].map((a) => a.textContent).join(",") === "MP4,Captions";`), "download buttons");
+    await shot("03-studio-video");
+    await go("library");
+    await waitFor(`document.querySelectorAll("#lib-list .video-card").length >= 1`, "library lists the video");
+  }
 });
 
 test("opening a feature shows its plugins, connectors, guidelines and settings", async () => {
@@ -167,7 +200,7 @@ test("an example prompt starts a chat in that feature", async () => {
 test("switch feature from the chat header", async () => {
   await click("#feature-pill");
   await waitFor(`!document.getElementById("feature-menu").hidden`, "menu open");
-  eq(await count("#feature-menu li"), 11, "all features in the menu");
+  eq(await count("#feature-menu li"), 12, "all features in the menu");
   await js(`document.querySelector('#feature-menu li[data-id="optimal"]').click();`);
   await waitFor(`document.getElementById("h-chat").textContent === "Optimal" && document.getElementById("feature-menu").hidden`, "switched");
   eq(await js(`return document.getElementById("companion").classList.contains("docked");`), false, "Optimal is not focus mode");
@@ -365,9 +398,9 @@ test("phone layout: bottom tab bar and no sideways scrolling on any screen", asy
   await viewport(390, 844, true, false);
   await go("home");
   await sleep(800);
-  eq(await js(`return [...document.querySelectorAll(".nav button")].filter((b) => getComputedStyle(b).display !== "none").length;`), 5, "visible tabs");
+  eq(await js(`return [...document.querySelectorAll(".nav button")].filter((b) => getComputedStyle(b).display !== "none").length;`), 6, "visible tabs");
   await shot("09-phone-landing");
-  for (const v of ["home", "feature/drawing", "chat", "day", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings"]) {
+  for (const v of ["home", "feature/drawing", "feature/studio", "chat", "library", "day", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings"]) {
     await route(v);
     const over = await js(`return document.documentElement.scrollWidth - window.innerWidth;`);
     assert(over <= 1, v + " overflows sideways by " + over + "px");

@@ -55,6 +55,6 @@ class BrandAndPersonaApiTest {
                 .content("{\"mode\":\"WORK\",\"humor\":3,\"truth\":9,\"focus\":8,\"efficiency\":3,\"search\":\"WEB\",\"approval\":\"ALL\"}"))
                 .andExpect(status().isNotFound());
         mvc.perform(get("/api/features").header("Authorization", bearer())).andExpect(jsonPath("$.modes[0].mode").value("FUNNY"))
-                .andExpect(jsonPath("$.modes[0].mood").value("HAPPY")).andExpect(jsonPath("$.features[0].persona.efficiency").value(5));
+                .andExpect(jsonPath("$.modes[0].mood").value("HAPPY")).andExpect(jsonPath("$.features[1].persona.efficiency").value(5));
     }
 }

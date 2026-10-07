@@ -45,6 +45,7 @@ public class DataService {
     private final FeatureCatalog features;
     private final AuditLog audit;
     private final Clock clock;
+    private List<OwnerData> extra = List.of();
 
     public DataService(ConversationRepository conversations, MessageRepository messages, MemoryRepository memories,
             ReminderRepository reminders, ToolCallRepository toolCalls, Workspace workspace, FeatureCatalog features,
@@ -60,12 +61,24 @@ public class DataService {
         this.clock = clock;
     }
 
+    /** Components with their own owner data (Studio videos …), included in export and delete-all. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setOwnerData(List<OwnerData> extra) {
+        this.extra = List.copyOf(extra);
+    }
+
     public Export export(String actor) {
         audit.append(actor, "data.export", "all");
         return new Export(clock.instant(), conversations.findAll(), messages.findAll(), memories.findAll(),
                 reminders.findAll(), toolCalls.findAll(), workspace.folders().findAll(), workspace.tasks().findAll(),
                 workspace.payments().findAll(), workspace.inbox().findAll(), workspace.notifications().findAll(), features.overrides(),
-                audit.findAll());
+                audit.findAll(), extras());
+    }
+
+    private Map<String, Object> extras() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        extra.forEach(o -> out.put(o.name(), o.export()));
+        return out;
     }
 
     /** Deletes all owner data when the exact confirmation phrase is given. Returns false otherwise. */
@@ -84,6 +97,7 @@ public class DataService {
         workspace.inbox().deleteAll();
         workspace.notifications().deleteAll();
         features.resetAll();
+        extra.forEach(OwnerData::deleteAll);
         audit.append("owner", "data.delete_all", "all");
         return true;
     }
@@ -96,5 +110,5 @@ public class DataService {
     public record Export(Instant exportedAt, List<Conversation> conversations, List<Message> messages,
             List<Memory> memories, List<Reminder> reminders, List<ToolCallRecord> toolCalls, List<Folder> folders,
             List<Task> tasks, List<Payment> payments, List<InboxMessage> inboxMessages, List<Notification> notifications,
-            Map<String, Map<String, Object>> featureSettings, List<AuditEntry> auditLog) {}
+            Map<String, Map<String, Object>> featureSettings, List<AuditEntry> auditLog, Map<String, Object> other) {}
 }

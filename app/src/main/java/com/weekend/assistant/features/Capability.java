@@ -16,7 +16,11 @@ public enum Capability {
     VISION("Image analysis", Kind.PLUGIN, "Claude reads the images you attach: objects, text, charts, details", List.of()),
     ART("Art studio", Kind.PLUGIN, "Claude draws original vector art (SVG); export as 4K PNG or SVG", List.of()),
     WEB("Web research", Kind.CONNECTOR, "Wikipedia search and summaries (off until a host is allowed)", List.of("web_search")),
-    NOTION("Notion", Kind.CONNECTOR, "Search your Notion and save notes (off until a token is set)", List.of("notion_search", "notion_create_page"));
+    NOTION("Notion", Kind.CONNECTOR, "Search your Notion and save notes (off until a token is set)", List.of("notion_search", "notion_create_page")),
+    RESEARCH("Web research (Claude)", Kind.CONNECTOR, "Claude searches the whole web for scripts and cites its sources (off until enabled)", List.of()),
+    VOICE("Voice-over", Kind.CONNECTOR, "Google Cloud Text-to-Speech narration (macOS voice for drafts)", List.of()),
+    PHOTOS("Licensed photos", Kind.CONNECTOR, "Free-licence photos from Wikimedia Commons, credited (off until the host is allowed)", List.of()),
+    RENDER("Video renderer", Kind.PLUGIN, "Motion graphics, captions and music rendered to an upload-ready MP4 (ffmpeg)", List.of());
 
     public enum Kind { PLUGIN, CONNECTOR }
 

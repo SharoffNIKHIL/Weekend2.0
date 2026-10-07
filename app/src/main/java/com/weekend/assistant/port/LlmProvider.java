@@ -40,15 +40,36 @@ public interface LlmProvider {
 
     record ToolResults(List<ToolResult> results) implements Turn {}
 
-    /** {@code temperature} 0.0–1.0, or null for the provider default. */
-    record LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens, Double temperature) {
+    /**
+     * {@code temperature} 0.0–1.0, or null for the provider default. {@code webSearches} &gt; 0 lets the provider search the
+     * web itself (Claude's server-side web search, 🔓 P7) up to that many times; 0 = no web.
+     */
+    record LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens, Double temperature,
+            int webSearches) {
+
+        public LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens, Double temperature) {
+            this(model, system, turns, tools, maxTokens, temperature, 0);
+        }
 
         public LlmRequest(String model, String system, List<Turn> turns, List<ToolSpec> tools, int maxTokens) {
-            this(model, system, turns, tools, maxTokens, null);
+            this(model, system, turns, tools, maxTokens, null, 0);
         }
     }
 
-    record LlmResponse(String text, List<ToolUse> toolUses, String stopReason, int inputTokens, int outputTokens) {
+    /** A web page the answer cites. */
+    record Citation(String title, String url) {}
+
+    record LlmResponse(String text, List<ToolUse> toolUses, String stopReason, int inputTokens, int outputTokens,
+            List<Citation> citations) {
+
+        public LlmResponse {
+            citations = citations == null ? List.of() : List.copyOf(citations);
+        }
+
+        public LlmResponse(String text, List<ToolUse> toolUses, String stopReason, int inputTokens, int outputTokens) {
+            this(text, toolUses, stopReason, inputTokens, outputTokens, List.of());
+        }
+
         public boolean wantsTools() {
             return toolUses != null && !toolUses.isEmpty();
         }

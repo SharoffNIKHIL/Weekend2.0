@@ -74,6 +74,7 @@ public class AgentService {
     private final Clock clock;
     private final Map<String, PendingAction> pending = new ConcurrentHashMap<>();
     private final Map<String, SearchRange> pendingRange = new ConcurrentHashMap<>();
+    private com.weekend.assistant.studio.StudioService studio;
 
     public AgentService(LlmProvider llm, ToolRegistry tools, ModelRouter router, ContextBuilder context,
             CostCalculator costs, MemoryService memories, ConversationRepository conversations,
@@ -94,6 +95,12 @@ public class AgentService {
         this.notifications = notifications;
         this.props = props;
         this.clock = clock;
+    }
+
+    /** Weekend Studio takes over turns that ask for a video (or continue one being set up). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setStudio(com.weekend.assistant.studio.StudioService studio) {
+        this.studio = studio;
     }
 
     public ChatResult chat(String conversationIdOrNull, String userText, boolean thinkHarder) {
@@ -121,6 +128,17 @@ public class AgentService {
         Message userMsg = messages.save(new Message(UUID.randomUUID().toString(), conv.id(), Role.USER,
                 stored, null, 0, 0, BigDecimal.ZERO, now));
         boolean memorySaved = memories.extractExplicit(userText, userMsg.id()).isPresent();
+
+        if (studio != null && pictures.isEmpty()) {
+            Optional<com.weekend.assistant.studio.StudioReply> sr = studio.respond(conv.id(), safeText, "studio".equals(fx.feature().id()));
+            if (sr.isPresent()) {
+                messages.save(new Message(UUID.randomUUID().toString(), conv.id(), Role.ASSISTANT, sr.get().text(), "studio",
+                        0, 0, BigDecimal.ZERO, clock.instant()));
+                audit.append("agent", "studio.turn", conv.id());
+                return new ChatResult(conv.id(), sr.get().text(), "studio", List.of(), null, BigDecimal.ZERO, memorySaved,
+                        fx.feature().id(), fx.feature().name(), sr.get());
+            }
+        }
 
         List<Memory> relevant = context(safeText, budget.memories());
         String model = router.choose(safeText, thinkHarder || budget.strongModel());
