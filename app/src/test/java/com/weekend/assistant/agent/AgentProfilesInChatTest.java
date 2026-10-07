@@ -50,7 +50,7 @@ class AgentProfilesInChatTest {
         ChatResult r = h.agent.chat(null, "hello", false);
         assertThat(r.agentId()).isEqualTo("weekend");
         assertThat(llm.requests.get(0).system()).doesNotContain("<agent_instructions>");
-        assertThat(llm.requests.get(0).tools()).hasSize(7);
+        assertThat(llm.requests.get(0).tools()).hasSize(10);   // 11 tools; web_search hidden while web is off
     }
 
     @Test

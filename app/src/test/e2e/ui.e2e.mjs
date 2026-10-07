@@ -111,7 +111,7 @@ test("home shows greeting, six category tiles with counts, folders and up next",
   eq(await count("#folders .folder a"), 5, "five folders");
   eq(await count("#folders .folder-icon .mini"), 20, "each folder icon shows four mini slots");
   eq(await count("#up-next .row-card"), 5, "up next rows");
-  eq(await js(`return document.querySelector(".brand img").getAttribute("src");`), "logo.svg", "helmet logo in the sidebar");
+  assert(["logo.svg", "/brand/logo.svg"].includes(await js(`return document.querySelector(".brand img").getAttribute("src");`)), "helmet logo in the sidebar");
   await shot("01-home");
 });
 
@@ -237,7 +237,7 @@ test("agents: built-in, config and demo agents; create a custom agent with condi
     document.querySelector("#custom-conditions [data-confirm]").checked = true;`);
   await submit("#custom-form");
   await waitFor(`[...document.querySelectorAll("#agent-list h3")].some((h) => h.textContent === "E2E Clock")`, "custom agent card");
-  const chips = await js(`return [...document.querySelectorAll("#agent-list .agent")].find((a) => a.textContent.includes("E2E Clock")).querySelector(".conds").textContent;`);
+  const chips = await js(`return [...[...document.querySelectorAll("#agent-list .agent")].find((a) => a.textContent.includes("E2E Clock")).querySelectorAll(".conds")].map((c) => c.textContent).join(" ");`);
   assert(chips.includes("Tools: current_time") && chips.includes("Every action waits for your yes"), "condition chips: " + chips);
   await shot("05-agents");
 });
@@ -326,6 +326,80 @@ test("accessibility basics: every control has a name, images have alt, ids are u
   eq(await js(`return [...document.images].filter((i) => !i.hasAttribute("alt")).length;`), 0, "images without alt");
   const dupes = await js(`const ids = [...document.querySelectorAll("[id]")].map((e) => e.id); return ids.filter((x, i) => ids.indexOf(x) !== i);`);
   eq(dupes.length, 0, "duplicate ids " + dupes);
+});
+
+test("helmet companion follows the mouse with the agent's mood", async () => {
+  await viewport(1440, 900, false, false);
+  await go("home");
+  await waitFor(`document.querySelector("#companion svg[data-companion]")`, "companion helmet loaded");
+  eq(await js(`return document.getElementById("companion").classList.contains("away");`), true, "hidden before the mouse moves");
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: 400, y: 300 });
+  await sleep(700);
+  eq(await js(`return document.getElementById("companion").classList.contains("away");`), false, "visible after the mouse moves");
+  const near = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform); return [m.m41, m.m42];`);
+  assert(Math.abs(near[0] - 422) < 25 && Math.abs(near[1] - 318) < 25, "helmet sits next to the cursor: " + near);
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: 900, y: 500 });
+  await sleep(900);
+  const moved = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform); return [m.m41, m.m42];`);
+  assert(moved[0] > near[0] + 300, "helmet followed the cursor: " + moved);
+  assert(await js(`return document.getElementById("companion").className.includes("mood-");`), "has a mood");
+  eq(await js(`return document.getElementById("companion").querySelectorAll("script").length;`), 0, "no scripts inside the helmet SVG");
+});
+
+test("tune: pick Funny mode, sliders follow, save shows the happy helmet", async () => {
+  await route("agents");
+  await waitFor(`document.querySelectorAll("#tune-modes .mode").length === 4`, "four modes");
+  eq(await js(`return document.getElementById("tune-agent").value;`), "weekend", "tunes the active agent");
+  await js(`document.querySelector('#tune-modes .mode[data-mode="FUNNY"]').click();`);
+  eq(await js(`return document.getElementById("s-humor").value;`), "9", "humor slider");
+  eq(await js(`return document.getElementById("s-search").value;`), "MEMORY", "search range");
+  assert(await js(`return document.getElementById("tune-preview").classList.contains("mood-happy");`), "happy preview");
+  await js(`const r = document.getElementById("s-truth"); r.value = 3; r.dispatchEvent(new Event("input"));`);
+  assert((await text("#tune-summary")).startsWith("Custom"), "moving a slider makes it Custom");
+  await js(`document.querySelector('#tune-modes .mode[data-mode="FUNNY"]').click();`);
+  await click("#tune-save");
+  await waitFor(`[...document.querySelectorAll('#agent-list .agent[data-id="weekend"] .tag')].some((t) => t.textContent.includes("Funny mode"))`, "card shows Funny");
+  assert(await js(`return document.getElementById("companion").classList.contains("mood-happy");`), "companion is happy");
+  await shot("11-agents-tune-funny");
+});
+
+test("high efficiency: the helmet flies to the chat box, turns serious and shows FOCUS", async () => {
+  await route("chat");
+  await js(`const r = document.getElementById("chat-efficiency"); r.value = 5; r.dispatchEvent(new Event("input")); r.dispatchEvent(new Event("change"));`);
+  await waitFor(`document.getElementById("companion").classList.contains("docked")`, "docked");
+  assert(await js(`return document.getElementById("companion").classList.contains("mood-serious");`), "serious face");
+  eq(await text("#chat-efficiency-label"), "Max", "efficiency label");
+  await sleep(1200);
+  const pos = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform);
+    const r = document.getElementById("composer").getBoundingClientRect(); return [m.m41 - r.right, m.m42 - r.top];`);
+  assert(Math.abs(pos[0] + 64) < 20 && Math.abs(pos[1] + 74) < 20, "sits on the chat box: " + pos);
+  eq(await js(`return getComputedStyle(document.querySelector("#companion .focus-label")).opacity;`), "1", "FOCUS label shown");
+  await shot("12-chat-focus-mode");
+  await route("home");
+  eq(await js(`return document.getElementById("companion").classList.contains("away");`), true, "leaves other screens in focus mode");
+  await route("chat");
+  await waitFor(`document.getElementById("companion").classList.contains("docked")`, "back on the chat box");
+});
+
+test("math runs locally and exactly from chat", async () => {
+  await click("#new-chat");
+  await type("#input", "calculate 2^10 + 25!");
+  await submit("#composer");
+  await waitFor(`[...document.querySelectorAll("#messages .msg.assistant .text")].some((t) => t.textContent.includes("15511210043330985984001024"))`, "exact result");
+  await type("#input", "solve x^2 - 5x + 6 = 0");
+  await submit("#composer");
+  await waitFor(`[...document.querySelectorAll("#messages .msg.assistant .text")].some((t) => t.textContent.includes("x = 2, 3"))`, "roots");
+});
+
+test("web search stays off until a host is allowed", async () => {
+  await type("#input", "search compound interest formula");
+  await submit("#composer");
+  await waitFor(`[...document.querySelectorAll("#messages .msg.assistant .text")].some((t) => t.textContent.includes("not available right now: web_search"))`, "refused");
+  await route("agents");
+  eq(await js(`return document.getElementById("web-off").hidden;`), false, "web-off notice on the Tune card");
+  await js(`const r = document.getElementById("s-efficiency"); document.querySelector('#tune-modes .mode[data-mode="WORK"]').click();`);
+  await click("#tune-save");
+  await waitFor(`!document.getElementById("companion").classList.contains("docked")`, "back to normal");
 });
 
 test("phone layout: bottom tab bar with five items and no sideways scrolling on any screen", async () => {

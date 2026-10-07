@@ -34,7 +34,8 @@ import tools.jackson.databind.json.JsonMapper;
  * file, and a chat to the loopback demo agent that only travels over HTTP after approval.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "project-agent-file=src/test/resources/agents/test-instructions.md")
+        properties = {"project-agent-file=src/test/resources/agents/test-instructions.md",
+                "owner-profile-file=src/test/resources/agents/test-profile.md", "owner-brand-dir="})
 @ActiveProfiles({"local", "ui"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class UiPreviewSeederTest {
@@ -65,7 +66,9 @@ class UiPreviewSeederTest {
     @Test
     @SuppressWarnings("unchecked")
     void seedsEveryScreenAndLoadsTheConfigAgent() throws Exception {
-        assertThat(memories.all()).hasSize(5);
+        assertThat(memories.all()).hasSize(3);                               // from the profile fixture; secret line skipped
+        assertThat(memories.all()).allMatch(m -> m.pinned()).noneMatch(m -> m.text().contains("hunter2"));
+        assertThat(memories.all()).extracting(m -> m.text()).doesNotContain("I prefer filter coffee, no sugar"); // no made-up demo memories
         assertThat(folders.summaries()).hasSize(5);
         assertThat(tasks.openCount()).isEqualTo(7);
         assertThat(reminders.upcomingCount()).isEqualTo(5);
@@ -138,9 +141,10 @@ class UiPreviewSeederTest {
     }
 
     @Test
-    void refusesToRunWhenSessionsAreRequired(@Autowired Clock clock, @Autowired org.springframework.core.env.Environment env) {
+    void refusesToRunWhenSessionsAreRequired(@Autowired Clock clock, @Autowired org.springframework.core.env.Environment env,
+            @Autowired com.weekend.assistant.owner.OwnerProfile profile) {
         UiPreviewSeeder seeder = new UiPreviewSeeder(memories, reminders, folders, tasks, payments, inbox, notifications,
-                agents, agent, TestFixtures.props(), clock, env);
+                agents, agent, TestFixtures.props(), clock, env, profile);
         assertThatThrownBy(() -> seeder.run(null)).isInstanceOf(IllegalStateException.class).hasMessageContaining("ui profile");
     }
 }

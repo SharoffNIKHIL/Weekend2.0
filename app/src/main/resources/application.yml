@@ -17,13 +17,13 @@ weekend:
     vertex-location: ${VERTEX_LOCATION:global}       # "global" = 🔓 may leave India (DESIGN §7.4)
     model-default: ${MODEL_DEFAULT:claude-haiku-4-5@20251001}
     model-strong: ${MODEL_STRONG:claude-sonnet-5}
-    max-output-tokens: 1024
+    max-output-tokens: 4096                          # ceiling; each agent's efficiency level picks 512–4096
     default-input-price: 1.00                        # USD per million tokens (Haiku 4.5)
     default-output-price: 5.00
     strong-input-price: 2.00                         # Sonnet 5 (confirm on Vertex pricing, I-19/R-1)
     strong-output-price: 10.00
   agent:
-    max-tool-steps: 5
+    max-tool-steps: 10                               # ceiling; efficiency picks 2–10
     max-memories-in-context: 8
     max-history-turns: 20
     strong-model-min-chars: 1200
@@ -43,10 +43,22 @@ weekend:
         name: Project agent
         description: Personal AI Agent project agent. Follows the owner's CLAUDE.md, drafts only, every action needs your yes.
         instructions-file: ${WEEKEND_PROJECT_AGENT_INSTRUCTIONS:${project-agent-file:}}   # path to CLAUDE.md; read at start-up, never committed
-        allowed-tools: [current_time, memory_search, task_list, task_create, reminder_create]
+        allowed-tools: [current_time, memory_search, task_list, task_create, reminder_create, math_evaluate, math_solve, math_stats, web_search]
         confirm-all-tools: true
         think-harder: false
         max-tool-steps: 5
+  pressure:                                          # high-pressure handling
+    max-concurrent-chats: ${WEEKEND_MAX_CONCURRENT_CHATS:4}
+    queue-wait: 10s
+    llm-retries: 2
+    retry-backoff: 400ms
+  web:                                               # agent web search (🔓 P7) — off until a host is allowed
+    allowed-hosts: ${WEEKEND_WEB_ALLOWED_HOSTS:}     # e.g. en.wikipedia.org — security checkpoint first
+    search-base-url: https://en.wikipedia.org
+    timeout: 10s
+  owner:                                             # private local files, never committed
+    profile-file: ${WEEKEND_OWNER_PROFILE:${owner-profile-file:}}
+    brand-dir: ${WEEKEND_BRAND_DIR:${owner-brand-dir:}}
   security:
     session-key: ${WEEKEND_SESSION_KEY:}             # from Secret Manager; never committed
     session-ttl: 12h

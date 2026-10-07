@@ -54,6 +54,11 @@ public class AgentDelegateTool implements Tool {
     }
 
     @Override
+    public boolean external() {
+        return true;
+    }
+
+    @Override
     public ToolOutput execute(Map<String, Object> input, ToolContext context) {
         String id = Schemas.requireString(input, "agent_id");
         String message = secrets.redact(Schemas.requireString(input, "message"));

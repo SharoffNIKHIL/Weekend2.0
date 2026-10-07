@@ -1,4 +1,4 @@
-// app/src/main/resources/static/app.js — Weekend PWA client (UI v3). No third-party scripts; talks only to this origin.
+// app/src/main/resources/static/app.js — Weekend PWA client (UI v4; companion and Tune panel in companion.js). No third-party scripts; talks only to this origin.
 // Model output, agent messages and stored text are always rendered with textContent, never as HTML.
 "use strict";
 
@@ -13,7 +13,7 @@ const NOTE_ICONS = { REMINDER: "bell", TASK: "task", APPROVAL: "approve", PAYMEN
 const state = {
   conversationId: null, costUsd: 0, memories: [], memoryFilter: "all", info: null,
   catalog: { agents: [], tools: [], remoteAllowed: false }, agentId: "weekend",
-  folders: [], taskFilter: "OPEN", folderId: null,
+  folders: [], taskFilter: "OPEN", folderId: null, logoSrc: "logo.svg",
 };
 const $ = (id) => document.getElementById(id);
 
@@ -469,6 +469,7 @@ function setAgent(id) {
   const a = activeAgent();
   if (a) $("chat-sub").textContent = (a.id === "weekend" ? "Weekend" : a.name) + " answers · write actions always wait for your yes.";
   document.querySelectorAll(".agent").forEach((c) => c.classList.toggle("active", c.dataset.id === id));
+  if (typeof Companion !== "undefined") Companion.sync();
 }
 
 function conditionChips(a) {
@@ -483,7 +484,7 @@ function conditionChips(a) {
 }
 
 function agentCard(a) {
-  const avatar = a.kind === "BUILTIN" ? el("img", { src: "logo.svg", alt: "" }) : icon(a.kind === "REMOTE" ? "link" : "agent");
+  const avatar = a.kind === "BUILTIN" ? el("img", { src: state.logoSrc, alt: "" }) : icon(a.kind === "REMOTE" ? "link" : "agent");
   const kind = { BUILTIN: "Built in", CUSTOM: "Custom", REMOTE: "Connected" }[a.kind];
   const actions = [];
   actions.push(a.id === state.agentId ? button("In use", null, "btn sm", "check") : button("Use in chat", () => { setAgent(a.id); location.hash = "chat"; }, "btn primary sm", "chat"));
@@ -502,6 +503,11 @@ function agentCard(a) {
   return el("li", { class: "agent" + (a.id === state.agentId ? " active" : ""), "data-id": a.id }, [
     el("div", { class: "top" }, [el("span", { class: "avatar" }, avatar), el("div", {}, [el("h3", { text: a.name }), tag(kind, a.kind === "BUILTIN" ? "accent" : "")])]),
     a.description ? el("p", { class: "desc", text: a.description }) : null,
+    a.kind !== "REMOTE" ? el("div", { class: "conds" }, [
+      tag((({ FUNNY: "Funny", DISCIPLINED: "Disciplined", WORK: "Work", BROWSE: "Browse" })[a.persona.mode] || "Custom") + " mode", "accent", "sparkle"),
+      tag(["", "Eco", "Balanced", "Standard", "High", "Max"][a.persona.efficiency] + " efficiency" + (a.focusMode ? " · focus" : ""), a.focusMode ? "accent" : "", "gauge"),
+      tag("Mood: " + a.mood.toLowerCase(), "", "smile"),
+    ]) : null,
     el("div", { class: "conds" }, conditionChips(a)),
     source, leaves,
     el("div", { class: "actions" }, actions),
@@ -517,6 +523,7 @@ async function loadAgents() {
   conditionsEditor($("custom-conditions"), null);
   $("remote-off").hidden = state.catalog.remoteAllowed;
   $("remote-form").querySelectorAll("input, button").forEach((x) => (x.disabled = !state.catalog.remoteAllowed));
+  if (typeof Tune !== "undefined") Tune.render();
 }
 
 /** Fills a fieldset with condition controls; cond null = defaults (all tools). */
@@ -590,7 +597,7 @@ function scrollChat() {
 }
 
 function messageRow(role, children) {
-  const avatar = role === "assistant" ? el("div", { class: "avatar" }, el("img", { src: "logo.svg", alt: "" })) : null;
+  const avatar = role === "assistant" ? el("div", { class: "avatar" }, el("img", { src: state.logoSrc, alt: "" })) : null;
   const li = el("li", { class: "msg " + role }, [avatar, el("div", { class: "body" }, children)]);
   $("empty-chat").hidden = true;
   $("messages").append(li);

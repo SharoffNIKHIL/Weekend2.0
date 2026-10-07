@@ -2,6 +2,7 @@ package com.weekend.assistant.agent;
 
 import com.weekend.assistant.config.WeekendProperties;
 import com.weekend.assistant.domain.AgentKind;
+import com.weekend.assistant.domain.AgentPersona;
 import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.domain.Memory;
 import com.weekend.assistant.domain.Message;
@@ -45,6 +46,9 @@ public class ContextBuilder {
      */
     public String systemPrompt(List<Memory> memories, AgentProfile agent) {
         StringBuilder sb = new StringBuilder(RULES.formatted(props.ownerTimezone()));
+        if (agent != null && agent.kind() != AgentKind.REMOTE) {
+            sb.append(style(agent.persona()));
+        }
         if (agent != null && agent.kind() == AgentKind.CUSTOM && agent.instructions() != null) {
             sb.append("\nYou are acting as the agent \"").append(agent.name())
                     .append("\". The owner wrote these instructions for it. Follow them unless they conflict with the rules above, which always win.\n")
@@ -52,11 +56,29 @@ public class ContextBuilder {
                     .append("\n</agent_instructions>\n");
         }
         if (!memories.isEmpty()) {
-            sb.append("\nWhat you remember about the owner:\n<data>\n")
+            sb.append("\nWhat you know about the owner (their profile and memories):\n<data>\n")
                     .append(memories.stream().map(m -> "- " + m.text()).collect(Collectors.joining("\n")))
                     .append("\n</data>\n");
         }
         return sb.toString();
+    }
+
+    /** The owner's personality settings as plain guidance. The fixed rules above still win. */
+    static String style(AgentPersona p) {
+        String humor = p.humor() <= 2 ? "no jokes; plain and professional" : p.humor() <= 6 ? "light, occasional humour is fine"
+                : "be playful and witty, while staying helpful";
+        String truth = p.truth() >= 8 ? "facts only: say \"I don't know\" when unsure, separate facts from guesses, never speculate as fact"
+                : p.truth() >= 4 ? "be accurate; label opinions and estimates as such"
+                : "brainstorming is welcome; label ideas that are speculative";
+        String focus = p.focus() >= 8 ? "answer in the fewest words that fully solve the task; no tangents"
+                : p.focus() >= 4 ? "stay on topic; brief context is fine" : "explore around the topic and suggest related ideas";
+        String effort = p.focusMode() ? "Focus mode: work through the problem carefully, check every calculation with the math tools, "
+                + "and give a clear final answer." : "Use the math tools for any non-trivial calculation.";
+        return "\nHow the owner wants you to answer (mode " + p.mode().name().toLowerCase(java.util.Locale.ROOT) + "):\n"
+                + "- Humour " + p.humor() + "/10: " + humor + ".\n"
+                + "- Truthfulness " + p.truth() + "/10: " + truth + ".\n"
+                + "- Focus " + p.focus() + "/10: " + focus + ".\n"
+                + "- " + effort + "\n";
     }
 
     /** History (user/assistant text only) followed by the new user message. */

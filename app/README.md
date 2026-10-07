@@ -39,6 +39,30 @@ The `ui` profile seeds made-up demo memories and reminders (in memory only, gone
 
 The `ui` profile also loads the **Project agent** from `~/CLAUDE.md` (override with `WEEKEND_PROJECT_AGENT_INSTRUCTIONS`) and connects a loopback **Demo agent** (`/demo-agent`), so remote-agent chat can be tried without anything leaving the Mac. Screenshots: [`docs/ui/`](../docs/ui/).
 
+## Personality, modes and focus mode
+Every agent except remote ones has a **persona**, tuned on the Agents screen ("Tune") or from the chat box:
+| Setting | Range | What it changes |
+|---|---|---|
+| Humor | 0–10 | Tone guidance; raises the sampling temperature |
+| Truth | 0–10 | High = facts only, says "I don't know"; lowers the temperature |
+| Focus | 0–10 | High = shortest on-task answer, no tangents |
+| Efficiency | Eco · Balanced · Standard · High · Max | Model (High/Max = strong), tool steps 2–10, answer length 512–4096 tokens, memories 4–16, history 8–40. High/Max = **focus mode**: the helmet flies to the chat box, turns serious and shows FOCUS. Costs more; the daily cap still applies |
+| Search range | Off · Memory · Web · Wide | Which lookup tools exist (Wide = 6 results + summaries) |
+| Approval range | All · Writes and external · Writes only | What waits for your yes. Writes and messages to other agents always ask |
+
+Modes are presets: **Funny** (happy face), **Disciplined** (serious, asks before every tool), **Work** (calm, default), **Browse** (curious, web searches pre-approved). Moving a slider makes it Custom.
+
+## Math and web
+- `math_evaluate`, `math_solve`, `math_stats`: local and exact (34-digit decimals, big-integer factorials, numeric root finding, statistics). No network. Limits keep hostile input cheap.
+- `web_search`: MediaWiki API (Wikipedia by default). **Off until `WEEKEND_WEB_ALLOWED_HOSTS` lists a host** (security checkpoint; 🔓 queries leave Weekend). Secrets are redacted from queries, no redirects, 10 s timeout, 256 KiB cap; results are DATA.
+
+## Your profile and private brand pack (local only, never committed)
+- `WEEKEND_OWNER_PROFILE` (ui profile: `~/.weekend/owner-profile.md`): lines `- fact: …`, `- pref: …`, `- task: …` become **pinned memories** at start-up and are always in the agent's context. 🔓 With Vertex AI they are sent with each prompt.
+- `WEEKEND_BRAND_DIR` (ui profile: `~/.weekend/brand/`): `logo.svg`, `icon.svg`, `companion.svg` (with `data-mood` groups happy/calm/serious/curious) replace the public assets; `/brand.json` tells the UI what exists. SVGs are sanitised before use.
+
+## High pressure
+At most `WEEKEND_MAX_CONCURRENT_CHATS` (default 4) chat turns run at once; others wait up to 10 s, then get HTTP 503 with `Retry-After`. Model errors are retried twice with exponential backoff (400 ms, 800 ms). The daily cost cap still applies.
+
 ## Agents
 | Kind | What it is | Safety |
 |---|---|---|
@@ -111,15 +135,17 @@ Implement `tools.Tool` as a Spring `@Component`: give it a `name()` (`^[a-z][a-z
 | GET / POST / DELETE | `/api/payments`, `/api/payments/{id}/decision`, `/paid` | Payment tracking (never pays) |
 | GET / POST / DELETE | `/api/messages`, `/api/notifications`, `/read`, `/read-all` | Agent messages and in-app notifications |
 | GET / POST / PUT / DELETE | `/api/agents`, `/custom`, `/remote`, `/{id}/instructions`, `/{id}/conditions`, `/{id}/test` | Agents; `POST /api/chat` takes `agentId` |
+| PUT | `/api/agents/{id}/persona` | Mode, humor, truth, focus, efficiency, search range, approval range |
+| GET | `/brand.json` | Which private brand files exist (no content) |
 | POST | `/agent-inbox` | Inbound messages from connected agents (agent token, not the owner session) |
 | GET | `/api/info` | Non-secret settings for the Settings screen: models, processing location, retention, cost cap |
 | GET | `/healthz` | Liveness |
 
 ## Testing
 ```bash
-cd app && mvn -B verify     # 117 JUnit tests: unit, HTTP integration (sessions on), real-port end to end (offline, no cloud)
+cd app && mvn -B verify     # 219 JUnit tests: unit, HTTP integration (sessions on), real-port end to end (offline, no cloud)
 
-# Browser end-to-end (20 tests, headless Chrome, Node 22+, no npm packages):
+# Browser end-to-end (25 tests, headless Chrome, Node 22+, no npm packages):
 java -jar target/weekend-assistant.jar --spring.profiles.active=local,ui &   # loopback preview env
 node src/test/e2e/ui.e2e.mjs                                                 # SHOTS_DIR=… saves screenshots
 ```

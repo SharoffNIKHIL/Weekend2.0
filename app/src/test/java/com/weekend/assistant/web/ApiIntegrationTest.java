@@ -64,8 +64,14 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void brandInfoIsPublicAndEmptyWithoutAPack() throws Exception {
+        mvc.perform(get("/brand.json")).andExpect(status().isOk()).andExpect(jsonPath("$.companion").value(false));
+        mvc.perform(get("/brand/logo.svg")).andExpect(status().isNotFound());
+    }
+
+    @Test
     void servesTheUi() throws Exception {
-        for (String asset : new String[] {"/index.html", "/app.js", "/theme.js", "/styles.css", "/sw.js", "/icon.svg", "/logo.svg"}) {
+        for (String asset : new String[] {"/index.html", "/app.js", "/theme.js", "/styles.css", "/sw.js", "/icon.svg", "/logo.svg", "/companion.js", "/companion.svg"}) {
             mvc.perform(get(asset)).andExpect(status().isOk());
         }
     }

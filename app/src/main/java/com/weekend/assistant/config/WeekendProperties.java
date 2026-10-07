@@ -22,7 +22,16 @@ public record WeekendProperties(
         Agent agent,
         Retention retention,
         Security security,
-        Agents agents) {
+        Agents agents,
+        Pressure pressure,
+        Web web,
+        Owner owner) {
+
+    public WeekendProperties {
+        pressure = pressure == null ? new Pressure(4, Duration.ofSeconds(10), 2, Duration.ofMillis(400)) : pressure;
+        web = web == null ? new Web(List.of(), "https://en.wikipedia.org", Duration.ofSeconds(10)) : web;
+        owner = owner == null ? new Owner(null, null) : owner;
+    }
 
     public ZoneId zone() {
         return ZoneId.of(ownerTimezone);
@@ -84,4 +93,36 @@ public record WeekendProperties(
             boolean confirmAllTools,
             boolean thinkHarder,
             Integer maxToolSteps) {}
+
+    /**
+     * High-pressure handling: at most {@code maxConcurrentChats} model calls at once (others wait up to
+     * {@code queueWait}, then get HTTP 503 + Retry-After); transient model errors are retried {@code llmRetries} times
+     * with exponential backoff starting at {@code retryBackoff}.
+     */
+    public record Pressure(int maxConcurrentChats, Duration queueWait, int llmRetries, Duration retryBackoff) {
+        public Pressure {
+            maxConcurrentChats = Math.max(1, maxConcurrentChats);
+            queueWait = queueWait == null ? Duration.ofSeconds(10) : queueWait;
+            llmRetries = Math.max(0, Math.min(5, llmRetries));
+            retryBackoff = retryBackoff == null ? Duration.ofMillis(400) : retryBackoff;
+        }
+    }
+
+    /**
+     * Web search for the agent (🔓 P7: queries leave Weekend). {@code allowedHosts} empty = off (default); adding a host
+     * is a security checkpoint. {@code searchBaseUrl}: a MediaWiki API base (Wikipedia by default).
+     */
+    public record Web(List<String> allowedHosts, String searchBaseUrl, Duration timeout) {
+        public Web {
+            allowedHosts = allowedHosts == null ? List.of() : List.copyOf(allowedHosts);
+            searchBaseUrl = searchBaseUrl == null || searchBaseUrl.isBlank() ? "https://en.wikipedia.org" : searchBaseUrl;
+            timeout = timeout == null ? Duration.ofSeconds(10) : timeout;
+        }
+    }
+
+    /**
+     * Private, local-only owner files (never committed): {@code profileFile} = facts and preferences imported as pinned
+     * memories at start-up; {@code brandDir} = a private brand pack (logo.svg, icon.svg, companion.svg) served at /brand/.
+     */
+    public record Owner(String profileFile, String brandDir) {}
 }

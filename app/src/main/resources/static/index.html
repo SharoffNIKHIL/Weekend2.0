@@ -53,13 +53,17 @@
     <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13 6l-2 12"/></symbol>
     <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2l2 12h11l2-8H7"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
+    <symbol id="i-math" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 7h8M8 12h2M14 12h2M8 16h2M14 16h2"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/></symbol>
+    <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9.5h.01M15 9.5h.01"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></symbol>
     <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/></symbol>
   </svg>
 
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <img src="logo.svg" alt="" width="36" height="40">
+        <img src="logo.svg" alt="" width="36" height="40" data-brand="logo">
         <div><strong>Weekend</strong><span>Private assistant</span></div>
       </div>
       <nav class="nav" aria-label="Sections">
@@ -88,7 +92,7 @@
         <div class="view-body home">
           <div class="inner wide">
             <header class="hero">
-              <img src="logo.svg" alt="" class="hero-logo" width="84" height="94">
+              <img src="logo.svg" alt="" class="hero-logo" width="84" height="94" data-brand="logo">
               <div class="hero-text">
                 <h1 id="h-home"><span id="greeting">Hello</span></h1>
                 <p class="sub" id="today"></p>
@@ -137,7 +141,7 @@
         <div class="view-body" id="chat-scroll">
           <div class="inner">
             <div class="empty-chat" id="empty-chat">
-              <div class="hello-mark"><img src="logo.svg" alt="" width="64" height="72"></div>
+              <div class="hello-mark"><img src="logo.svg" alt="" width="64" height="72" data-brand="logo"></div>
               <h2>How can I help?</h2>
               <p>I can answer questions, remember things, add tasks and reminders, and talk to your other agents. Anything that changes data or leaves Weekend waits for your yes.</p>
               <div class="chips" id="suggestions">
@@ -161,6 +165,12 @@
                   <span class="sr-only">Agent</span>
                   <select id="agent-select"></select>
                 </label>
+                <label class="eff-pick" title="Efficiency of the active agent (High and Max switch on focus mode)">
+                  <svg class="ic sm"><use href="#i-gauge"/></svg>
+                  <span class="sr-only">Efficiency</span>
+                  <input type="range" min="1" max="5" step="1" id="chat-efficiency" aria-label="Efficiency">
+                  <b id="chat-efficiency-label">Standard</b>
+                </label>
                 <label class="think" title="Route this message to the stronger model">
                   <input type="checkbox" id="think">
                   <span><svg class="ic sm"><use href="#i-sparkle"/></svg>Think harder</span>
@@ -183,6 +193,44 @@
         </header>
         <div class="view-body">
           <div class="inner wide">
+            <article class="card tune" id="tune">
+              <div class="tune-head">
+                <div class="tune-preview" id="tune-preview" aria-hidden="true"></div>
+                <div class="tune-title">
+                  <h2><svg class="ic"><use href="#i-settings"/></svg>Tune <select id="tune-agent" aria-label="Agent to tune"></select></h2>
+                  <p class="hint" id="tune-summary">Pick a mode, then fine-tune with the sliders.</p>
+                </div>
+              </div>
+              <div class="modes" id="tune-modes" role="group" aria-label="Mode"></div>
+              <div class="sliders">
+                <label class="slider"><span><svg class="ic sm"><use href="#i-smile"/></svg>Humor <b id="v-humor"></b></span>
+                  <input type="range" min="0" max="10" step="1" id="s-humor" aria-label="Humor"><small>matter-of-fact ↔ playful</small></label>
+                <label class="slider"><span><svg class="ic sm"><use href="#i-shield"/></svg>Truth <b id="v-truth"></b></span>
+                  <input type="range" min="0" max="10" step="1" id="s-truth" aria-label="Truth"><small>brainstorm ↔ facts only, says "I don't know"</small></label>
+                <label class="slider"><span><svg class="ic sm"><use href="#i-target"/></svg>Focus <b id="v-focus"></b></span>
+                  <input type="range" min="0" max="10" step="1" id="s-focus" aria-label="Focus"><small>exploratory ↔ shortest on-task answer</small></label>
+                <label class="slider"><span><svg class="ic sm"><use href="#i-gauge"/></svg>Efficiency <b id="v-efficiency"></b></span>
+                  <input type="range" min="1" max="5" step="1" id="s-efficiency" aria-label="Efficiency"><small id="efficiency-hint"></small></label>
+              </div>
+              <div class="ranges">
+                <label>Search range
+                  <select id="s-search">
+                    <option value="OFF">Off: only this chat</option>
+                    <option value="MEMORY">Memory: + my memories and tasks</option>
+                    <option value="WEB">Web: + web search, top 3</option>
+                    <option value="WIDE">Wide: + 6 results and summaries</option>
+                  </select></label>
+                <label>Approval range
+                  <select id="s-approval">
+                    <option value="ALL">Ask before every tool</option>
+                    <option value="WRITES_AND_EXTERNAL">Ask before changes and anything leaving Weekend</option>
+                    <option value="WRITES_ONLY">Ask before changes only (web search pre-approved)</option>
+                  </select></label>
+              </div>
+              <p class="flag" id="web-off" hidden><svg class="ic sm"><use href="#i-lock"/></svg><span>Web search is switched off on this server, so Web and Wide act like Memory until a host is allowed (security checkpoint).</span></p>
+              <div class="row end"><button class="btn ghost" type="button" id="tune-reset">Reset to mode</button><button class="btn primary" type="button" id="tune-save"><svg class="ic sm"><use href="#i-check"/></svg>Save</button></div>
+            </article>
+
             <ul class="agent-grid" id="agent-list"></ul>
 
             <div class="two-col">
@@ -414,6 +462,7 @@
                 <button data-theme-set="light" aria-pressed="false">Light</button>
                 <button data-theme-set="dark" aria-pressed="false">Dark</button>
               </div>
+              <label class="switch"><input type="checkbox" id="companion-toggle" checked> Helmet follows my cursor (in focus mode it sits on the chat box)</label>
             </article>
 
             <article class="card">
@@ -436,6 +485,8 @@
       </section>
     </main>
   </div>
+
+  <div id="companion" class="away" aria-hidden="true"><div class="bob"></div><span class="focus-label">FOCUS</span></div>
 
   <dialog id="confirm" class="dialog">
     <form method="dialog">
@@ -461,5 +512,6 @@
 
   <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
   <script src="app.js" defer></script>
+  <script src="companion.js" defer></script>
 </body>
 </html>

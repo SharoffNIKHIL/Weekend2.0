@@ -41,7 +41,20 @@ public final class TestFixtures {
                 new WeekendProperties.Retention(Duration.ofDays(365), Duration.ofDays(180), Duration.ofDays(90), Duration.ofDays(730),
                         Duration.ofDays(30), Duration.ofDays(365)),
                 new WeekendProperties.Security(KEY, Duration.ofHours(12), true),
-                agents);
+                agents, null, null, null);
+    }
+
+    /** Same defaults with other pressure, web or owner settings. */
+    public static WeekendProperties with(WeekendProperties p, WeekendProperties.Pressure pressure, WeekendProperties.Web web,
+            WeekendProperties.Owner owner) {
+        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), p.security(), p.agents(),
+                pressure, web, owner);
+    }
+
+    public static WeekendProperties withSecurity(WeekendProperties.Security security) {
+        WeekendProperties p = props();
+        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), security, p.agents(),
+                p.pressure(), p.web(), p.owner());
     }
 
     /** A clock fixed at a moment that tests can advance. */
