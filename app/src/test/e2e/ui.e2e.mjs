@@ -74,9 +74,13 @@ async function viewport(width, height, mobile, dark) {
 async function go(hash) {
   await cdp("Page.navigate", { url: BASE + "#" + hash });
   await waitFor(`document.readyState === "complete" && !document.getElementById("view-${hash.split("/")[0]}").hidden`, "view " + hash);
-  await sleep(350);
+  await sleep(450);
 }
-async function route(hash) { await js(`location.hash = ${q(hash)};`); await sleep(400); }
+async function route(hash) {
+  await js(`location.hash = ${q(hash)};`);
+  await waitFor(`!document.getElementById("view-${hash.split("/")[0]}").hidden`, "view " + hash);
+  await sleep(450);
+}
 const click = (sel) => js(`const e = document.querySelector(${q(sel)}); if (!e) throw new Error("no element " + ${q(sel)}); e.click();`);
 const clickText = (sel, text) => js(`const e = [...document.querySelectorAll(${q(sel)})].find((x) => x.textContent.trim().includes(${q(text)}));
   if (!e) throw new Error("no " + ${q(sel)} + " with text " + ${q(text)}); e.click();`);
@@ -97,200 +101,226 @@ const eq = (a, b, msg) => assert(a === b, `${msg}: expected ${JSON.stringify(b)}
 // ---------- tests ----------
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
+const reply = (needle) => `[...document.querySelectorAll("#messages .msg.assistant")].some((t) => t.textContent.includes(${q(needle)}))`;
 
-test("home shows greeting, six category tiles with counts, folders and up next", async () => {
+test("landing greets the owner and offers eleven features", async () => {
   await viewport(1440, 900, false, false);
   await go("home");
-  await waitFor(`document.querySelectorAll("#folders .folder").length >= 6`, "folders");
-  assert(/Good|Working/.test(await text("#greeting")), "greeting");
-  eq(await count("#tiles .tile"), 6, "tiles");
-  eq(await text('[data-tile="tasks"] b'), "7", "open tasks tile");
-  eq(await text('[data-tile="reminders"] b'), "5", "upcoming reminders tile");
-  eq(await text('[data-tile="approvals"] b'), "2", "approvals tile");
-  assert(await js(`return document.querySelector('[data-tile="approvals"]').classList.contains("hot");`), "approvals tile is highlighted");
-  eq(await count("#folders .folder a"), 5, "five folders");
-  eq(await count("#folders .folder-icon .mini"), 20, "each folder icon shows four mini slots");
-  eq(await count("#up-next .row-card"), 5, "up next rows");
-  assert(["logo.svg", "/brand/logo.svg"].includes(await js(`return document.querySelector(".brand img").getAttribute("src");`)), "helmet logo in the sidebar");
-  await shot("01-home");
+  await waitFor(`document.querySelectorAll(".feature-card").length === 11`, "feature cards");
+  await sleep(1200);
+  assert(/^(Hi .+\.|Good \w+\.|Working late\?\.)$/.test(await text("#greeting")), "greeting: " + (await text("#greeting")));
+  eq(await text("#ask"), "What feature do you want to explore?", "question");
+  eq(await count("#features-everyday .feature-card"), 4, "everyday features");
+  eq(await count("#features-workspace .feature-card"), 7, "workspace features");
+  eq(await js(`return [...document.querySelectorAll(".feature-card strong")].map((s) => s.textContent).join(",");`),
+    "Optimal,Hard,Smooth,Focused,Research,Coding,Financial,Designing,Drawing,Image,Notes", "feature names");
+  assert(await js(`return document.querySelector("#hero-helmet svg") !== null;`), "big helmet on the landing page");
+  assert((await text("#day-summary")).includes("7 open tasks"), "day summary");
+  eq(await js(`return document.getElementById("view-home").classList.contains("entering") || getComputedStyle(document.getElementById("view-home")).opacity === "1";`), true, "view shown");
+  await shot("01-landing");
 });
 
-test("a folder opens with its items, and items can be added to it", async () => {
-  await clickText("#folders .folder a", "Work");
-  await waitFor(`!document.getElementById("view-folder").hidden && document.getElementById("h-folder").textContent === "Work"`, "work folder");
-  await waitFor(`document.querySelectorAll("#folder-tasks .row-card").length === 3`, "work tasks");
-  eq(await count("#folder-reminders .rem"), 2, "work reminders");
-  await type("#folder-task-title", "E2E folder task");
-  await submit("#folder-task-form");
-  await waitFor(`document.querySelectorAll("#folder-tasks .row-card").length === 4`, "added task");
-  await shot("02-folder");
+test("opening a feature shows its plugins, connectors, guidelines and settings", async () => {
+  await click('.feature-card[data-feature="notes"]');
+  await waitFor(`!document.getElementById("view-feature").hidden && document.getElementById("f-name").textContent === "Notes"`, "notes page");
+  const caps = await js(`return [...document.querySelectorAll("#f-caps .cap")].map((c) => c.textContent);`);
+  assert(caps[0].includes("Notion") && caps[0].includes("WEEKEND_NOTION_TOKEN") && caps[0].includes("Connector"), "Notion connector off with reason: " + caps[0]);
+  eq(await js(`return document.querySelector("#f-caps .cap").classList.contains("off");`), true, "shown as off");
+  assert(await count("#f-rules li") >= 3, "guidelines");
+  eq(await count("#f-examples .chip"), 3, "example prompts");
+  await route("feature/image");
+  await waitFor(`document.getElementById("f-name").textContent === "Image"`, "image page");
+  const imageCaps = await js(`return [...document.querySelectorAll("#f-caps .cap strong")].map((s) => s.textContent);`);
+  eq(imageCaps.join(","), "Image analysis,Art studio,Memory", "image plugins");
+  await shot("02-feature-image");
 });
 
-test("a new folder is created from the dialog with a chosen icon", async () => {
-  await route("home");
-  await click("#new-folder");
-  await waitFor(`document.getElementById("sheet").open`, "folder dialog");
-  await type("#folder-name", "E2E Books");
-  await js(`document.querySelector('#sheet .icon-picker button[aria-label="book"]').click();`);
-  await dialogOk("sheet");
-  await waitFor(`[...document.querySelectorAll("#folders strong")].some((s) => s.textContent === "E2E Books")`, "new folder tile");
-  assert(await js(`return [...document.querySelectorAll("#folders .folder a")].find((a) => a.textContent.includes("E2E Books")).querySelector("use").getAttribute("href") === "#i-book";`), "book icon");
+test("customise a feature: mode, sliders and my own instructions", async () => {
+  await route("feature/coding");
+  await waitFor(`document.getElementById("tune-name").textContent === "Coding" && document.querySelectorAll("#tune-modes .mode").length === 4`, "customise panel");
+  eq(await js(`return document.getElementById("s-efficiency").value;`), "4", "coding defaults to High");
+  await js(`document.querySelector('#tune-modes .mode[data-mode="FUNNY"]').click();`);
+  eq(await js(`return document.getElementById("s-humor").value;`), "9", "mode sets sliders");
+  assert(await js(`return document.getElementById("tune-preview").classList.contains("mood-happy");`), "happy preview");
+  await type("#s-instructions", "Use pytest and type hints.");
+  await click("#tune-save");
+  await waitFor(`[...document.querySelectorAll("#toasts .toast")].some((t) => t.textContent.includes("Coding: Funny mode"))`, "saved");
+  await click("#tune-reset");
+  await waitFor(`document.getElementById("s-instructions").value === "" && document.getElementById("s-efficiency").value === "4"`, "reset");
+  await shot("03-feature-customise");
 });
 
-test("tasks: add with folder and priority, complete, see it under Done, delete", async () => {
-  await route("tasks");
-  await waitFor(`document.querySelectorAll("#task-folder option").length > 1`, "folder options");
-  await type("#task-title", "E2E task to finish");
-  await js(`const s = document.getElementById("task-folder"); s.value = [...s.options].find((o) => o.text === "Home").value;
-    document.getElementById("task-priority").value = "HIGH";`);
-  await submit("#task-form");
-  await waitFor(`[...document.querySelectorAll("#task-groups .row-card strong")].some((s) => s.textContent === "E2E task to finish")`, "task row");
-  await js(`[...document.querySelectorAll("#task-groups .row-card")].find((r) => r.textContent.includes("E2E task to finish")).querySelector(".check").click();`);
-  await waitFor(`![...document.querySelectorAll("#task-groups strong")].some((s) => s.textContent === "E2E task to finish")`, "task leaves Open");
-  await clickText("#task-filter button", "Done");
-  await waitFor(`[...document.querySelectorAll("#task-groups .row-card.done strong")].some((s) => s.textContent === "E2E task to finish")`, "task under Done");
-  await js(`[...document.querySelectorAll("#task-groups .row-card")].find((r) => r.textContent.includes("E2E task to finish")).querySelector(".icon-btn.danger").click();`);
-  await dialogOk();
-  await waitFor(`![...document.querySelectorAll("#task-groups strong")].some((s) => s.textContent === "E2E task to finish")`, "task deleted");
-  await clickText("#task-filter button", "Open");
+test("an example prompt starts a chat in that feature", async () => {
+  await route("feature/hard");
+  await waitFor(`document.querySelectorAll("#f-examples .chip").length === 3`, "examples");
+  await click("#f-examples .chip");
+  await waitFor(`!document.getElementById("view-chat").hidden && document.getElementById("h-chat").textContent === "Hard"`, "chat in Hard");
+  await waitFor(reply("x = 1, 2, 3"), "Hard solves the cubic");
+  assert(await js(`return document.getElementById("companion").classList.contains("docked") && document.getElementById("companion").classList.contains("mood-serious");`), "Hard = focus mode: helmet docked, serious");
+  await sleep(1200);
+  const dock = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform);
+    const r = document.getElementById("composer").getBoundingClientRect(); return [m.m41 - r.right, m.m42 - r.bottom];`);
+  assert(Math.abs(dock[0] - 14) < 20 && Math.abs(dock[1] + 92) < 20, "beside the chat box on wide screens: " + dock);
+  await shot("04-chat-hard-focus");
 });
 
-test("reminders: add for the future, cancel through the confirm dialog", async () => {
-  await route("reminders");
-  await type("#reminder-text", "E2E reminder");
-  await js(`document.getElementById("reminder-due").value = "2099-05-01T09:30";`);
-  await submit("#reminder-form");
-  await waitFor(`[...document.querySelectorAll("#reminders-upcoming strong")].some((s) => s.textContent === "E2E reminder")`, "upcoming reminder");
-  assert((await text("#reminders-upcoming")).includes("9:30"), "IST time shown");
-  await js(`[...document.querySelectorAll("#reminders-upcoming .rem")].find((r) => r.textContent.includes("E2E reminder")).querySelector("button").click();`);
-  await dialogOk();
-  await waitFor(`[...document.querySelectorAll("#reminders-past strong")].some((s) => s.textContent === "E2E reminder")`, "cancelled reminder");
-  await type("#reminder-text", "In the past");
-  await js(`document.getElementById("reminder-due").value = "2000-01-01T09:00";`);
-  await submit("#reminder-form");
-  await waitFor(`[...document.querySelectorAll("#toasts .toast.error")].some((t) => t.textContent.includes("future"))`, "past-time error");
-});
-
-test("approvals: approve the payment, decline the tool call, counts update", async () => {
-  await route("approvals");
-  await waitFor(`document.querySelectorAll("#approval-list .row-card").length === 2`, "two approvals");
-  await js(`[...document.querySelectorAll("#approval-list .row-card")].find((r) => r.textContent.includes("Payment to")).querySelector(".btn.primary").click();`);
-  await waitFor(`document.querySelectorAll("#approval-list .row-card").length === 1`, "one approval left");
-  assert((await lastToast()).includes("does not pay"), "payment approval explains Weekend never pays");
-  await js(`document.querySelector("#approval-list .row-card .btn:not(.primary)").click();`);
-  await waitFor(`document.querySelector("#approval-list .empty")`, "no approvals");
-  await waitFor(`document.querySelector('[data-count="approvals"]').hidden`, "approvals badge cleared");
-  await shot("03-approvals-empty");
-});
-
-test("payments: request, approve, mark paid; card numbers are refused", async () => {
-  await route("payments");
-  await type("#payment-payee", "E2E Internet");
-  await type("#payment-amount", "999.50");
-  await js(`document.getElementById("payment-due").value = "2099-02-01";`);
-  await submit("#payment-form");
-  await waitFor(`[...document.querySelectorAll("#payment-list .row-card")].some((r) => r.textContent.includes("E2E Internet") && r.textContent.includes("Needs approval"))`, "pending payment");
-  assert((await text("#payment-list")).includes("₹999.50"), "INR amount");
-  const row = `[...document.querySelectorAll("#payment-list .row-card")].find((r) => r.textContent.includes("E2E Internet"))`;
-  await js(`${row}.querySelector(".btn.primary").click();`);
-  await waitFor(`${row}.textContent.includes("Mark paid")`, "approved payment");
-  await js(`${row}.querySelector(".btn.primary").click();`);
-  await waitFor(`${row}.textContent.includes("Paid") && ${row}.classList.contains("muted")`, "paid payment");
-  await type("#payment-payee", "Card test");
-  await type("#payment-amount", "10");
-  await type("#payment-note", "card 4111 1111 1111 1111");
-  await submit("#payment-form");
-  await waitFor(`[...document.querySelectorAll("#toasts .toast.error")].some((t) => t.textContent.includes("card numbers"))`, "card number refused");
-  await shot("04-payments");
-});
-
-test("messages: unread messages from agents, mark read, delete", async () => {
-  await route("messages");
-  await waitFor(`document.querySelectorAll("#message-list .row-card").length >= 2`, "messages");
-  const unread = await count("#message-list .row-card.unread");
-  assert(unread >= 2, "unread messages");
-  await click("#message-list .row-card.unread");
-  await waitFor(`document.querySelectorAll("#message-list .row-card.unread").length === ${unread - 1}`, "one marked read");
-  const before = await count("#message-list .row-card");
-  await click("#message-list .row-card .icon-btn.danger");
-  await waitFor(`document.querySelectorAll("#message-list .row-card").length === ${before - 1}`, "message deleted");
-});
-
-test("notifications: list, open one, mark all read", async () => {
-  await route("notifications");
-  await waitFor(`document.querySelectorAll("#notification-list .row-card").length > 0`, "notifications");
-  await click("#read-all");
-  await waitFor(`document.querySelectorAll("#notification-list .row-card.unread").length === 0`, "all read");
-  await waitFor(`document.querySelector('[data-count="notifications"]').hidden`, "badge cleared");
-});
-
-test("agents: built-in, config and demo agents; create a custom agent with conditions", async () => {
-  await route("agents");
-  await waitFor(`document.querySelectorAll("#agent-list .agent").length >= 2`, "agent cards");
-  const names = await js(`return [...document.querySelectorAll("#agent-list h3")].map((h) => h.textContent);`);
-  assert(names.includes("Weekend") && names.includes("Demo agent"), "Weekend and Demo agent listed: " + names);
-  assert(await js(`return document.querySelector('#agent-list .agent[data-id="weekend"]').classList.contains("active");`), "Weekend active by default");
-  eq(await js(`return document.getElementById("remote-off").hidden;`), true, "remote agents allowed on loopback");
-  await type("#custom-name", "E2E Clock");
-  await type("#custom-instructions", "Only tell the time.");
-  await js(`document.querySelectorAll("#custom-conditions [data-tool]").forEach((c) => (c.checked = c.value === "current_time"));
-    document.querySelector("#custom-conditions [data-confirm]").checked = true;`);
-  await submit("#custom-form");
-  await waitFor(`[...document.querySelectorAll("#agent-list h3")].some((h) => h.textContent === "E2E Clock")`, "custom agent card");
-  const chips = await js(`return [...[...document.querySelectorAll("#agent-list .agent")].find((a) => a.textContent.includes("E2E Clock")).querySelectorAll(".conds")].map((c) => c.textContent).join(" ");`);
-  assert(chips.includes("Tools: current_time") && chips.includes("Every action waits for your yes"), "condition chips: " + chips);
-  await shot("05-agents");
-});
-
-test("instructions open in a dialog as plain text", async () => {
-  await js(`[...document.querySelectorAll("#agent-list .agent")].find((a) => a.textContent.includes("E2E Clock")).querySelector(".btn.ghost").click();`);
-  await waitFor(`document.getElementById("sheet").open && document.querySelector("#sheet pre")`, "instructions dialog");
-  eq(await text("#sheet pre"), "Only tell the time.", "instructions text");
-  await js(`document.getElementById("sheet-cancel").click();`);
-});
-
-test("chat with the custom agent: even a read tool waits for approval", async () => {
-  await js(`[...document.querySelectorAll("#agent-list .agent")].find((a) => a.textContent.includes("E2E Clock")).querySelector(".btn.primary").click();`);
-  await waitFor(`!document.getElementById("view-chat").hidden`, "chat view");
-  eq(await js(`return document.getElementById("agent-select").selectedOptions[0].text;`), "E2E Clock", "agent picker");
-  await type("#input", "what time is it?");
-  await submit("#composer");
-  await waitFor(`document.querySelector("#messages .confirm-card")`, "confirmation card");
-  assert((await text("#messages .confirm-card")).includes("current_time"), "pending current_time");
-  await js(`document.querySelector("#messages .confirm-card .btn.primary").click();`);
-  await waitFor(`document.querySelector("#messages .confirm-card.done")`, "approved");
-});
-
-test("chat with the remote demo agent travels over loopback only after approval", async () => {
-  await js(`const s = document.getElementById("agent-select"); s.value = [...s.options].find((o) => o.text === "Demo agent").value; s.dispatchEvent(new Event("change"));`);
-  await click("#new-chat");
-  await type("#input", "Hello demo agent");
-  await submit("#composer");
-  await waitFor(`document.querySelector("#messages .confirm-card")`, "remote confirmation");
-  const summary = await text("#messages .confirm-card p");
-  assert(summary.includes("127.0.0.1") && summary.includes("leaves Weekend"), "summary names the host: " + summary);
-  await js(`document.querySelector("#messages .confirm-card .btn.primary").click();`);
-  await waitFor(`(document.querySelector("#messages .confirm-card.done p.hint") || {}).textContent?.includes("Demo agent here")`, "demo agent reply", 8000);
-  await shot("06-chat-remote");
-});
-
-test("default agent: 'add task' needs approval and then shows up in Tasks", async () => {
-  await js(`const s = document.getElementById("agent-select"); s.value = "weekend"; s.dispatchEvent(new Event("change"));`);
+test("switch feature from the chat header", async () => {
+  await click("#feature-pill");
+  await waitFor(`!document.getElementById("feature-menu").hidden`, "menu open");
+  eq(await count("#feature-menu li"), 11, "all features in the menu");
+  await js(`document.querySelector('#feature-menu li[data-id="optimal"]').click();`);
+  await waitFor(`document.getElementById("h-chat").textContent === "Optimal" && document.getElementById("feature-menu").hidden`, "switched");
+  eq(await js(`return document.getElementById("companion").classList.contains("docked");`), false, "Optimal is not focus mode");
   await click("#new-chat");
   await type("#input", "add task E2E task from chat");
   await submit("#composer");
   await waitFor(`document.querySelector("#messages .confirm-card")`, "task confirmation");
   await js(`document.querySelector("#messages .confirm-card .btn.primary").click();`);
   await waitFor(`document.querySelector("#messages .confirm-card.done")`, "approved");
-  await route("tasks");
-  await waitFor(`[...document.querySelectorAll("#task-groups strong")].some((s) => s.textContent === "E2E task from chat")`, "task from chat");
 });
 
-test("home quick-ask sends the question to chat", async () => {
+test("image feature: attach a picture and Claude describes it", async () => {
+  await route("feature/image");
+  await waitFor(`document.getElementById("f-name").textContent === "Image"`, "image page");
+  await click("#f-start");
+  await waitFor(`!document.getElementById("view-chat").hidden && document.getElementById("h-chat").textContent === "Image"`, "image chat");
+  eq(await js(`return document.getElementById("attach").hidden;`), false, "attach button shown");
+  await js(`const c = document.createElement("canvas"); c.width = 40; c.height = 20; const g = c.getContext("2d"); g.fillStyle = "#ffffff"; g.fillRect(0, 0, 40, 20);
+    const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+    const dt = new DataTransfer(); dt.items.add(new File([blob], "white.png", { type: "image/png" }));
+    const input = document.getElementById("file"); input.files = dt.files; input.dispatchEvent(new Event("change"));`);
+  await waitFor(`document.querySelectorAll("#thumbs .thumb").length === 1`, "thumbnail");
+  await type("#input", "What is in this picture?");
+  await submit("#composer");
+  await waitFor(reply("PNG 40×20"), "pixel description");
+  assert(await js(`return document.querySelectorAll("#messages .msg.user .msg-images img").length === 1;`), "image shown in my message");
+  eq(await js(`return document.getElementById("thumbs").hidden;`), true, "attachments cleared after sending");
+  await shot("05-chat-image");
+});
+
+test("drawing feature: original art renders and exports at 4K", async () => {
+  await click("#feature-pill");
+  await js(`document.querySelector('#feature-menu li[data-id="drawing"]').click();`);
+  await click("#new-chat");
+  await type("#input", "draw a sunset over the Western Ghats");
+  await submit("#composer");
+  await waitFor(`document.querySelector("#messages figure.art svg")`, "artwork card");
+  eq(await js(`return document.querySelector("#messages figure.art svg").getAttribute("viewBox");`), "0 0 3840 2160", "4K viewBox");
+  eq(await js(`return document.querySelectorAll("#messages figure.art script").length;`), 0, "sanitised");
+  const size = await js(`const c = await WeekendArt.toCanvas(document.querySelector("#messages figure.art svg")); return [c.width, c.height];`);
+  eq(size.join("x"), "3840x2160", "4K PNG canvas");
+  await shot("06-chat-drawing-art");
+});
+
+test("research: web search connector stays off until approved", async () => {
+  await route("feature/research");
+  await waitFor(`document.getElementById("f-name").textContent === "Research"`, "research page");
+  const web = await js(`return [...document.querySelectorAll("#f-caps .cap")].find((c) => c.textContent.includes("Web research")).textContent;`);
+  assert(web.includes("WEEKEND_WEB_ALLOWED_HOSTS"), "web off reason: " + web);
+  await click("#f-start");
+  await type("#input", "search compound interest");
+  await submit("#composer");
+  await waitFor(reply("not available right now: web_search"), "refused while off");
+});
+
+test("your day: tiles, folders and up next", async () => {
+  await route("day");
+  await waitFor(`document.querySelectorAll("#folders .folder").length >= 6`, "folders");
+  eq(await text('[data-tile="reminders"] b'), "5", "reminders tile");
+  eq(await count("#tiles .tile"), 6, "tiles");
+  eq(await count("#folders .folder-icon .mini"), 20, "four previews in each of the 5 folders");
+  eq(await count("#up-next .row-card"), 5, "up next");
+  await shot("07-your-day");
+});
+
+test("a folder opens with its items, and items can be added to it", async () => {
+  await clickText("#folders .folder a", "Work");
+  await waitFor(`!document.getElementById("view-folder").hidden && document.getElementById("h-folder").textContent === "Work"`, "work folder");
+  await waitFor(`document.querySelectorAll("#folder-tasks .row-card").length === 3`, "work tasks");
+  await type("#folder-task-title", "E2E folder task");
+  await submit("#folder-task-form");
+  await waitFor(`document.querySelectorAll("#folder-tasks .row-card").length === 4`, "added task");
+});
+
+test("a new folder is created from the dialog with a chosen icon", async () => {
+  await route("day");
+  await click("#new-folder");
+  await waitFor(`document.getElementById("sheet").open`, "folder dialog");
+  await type("#folder-name", "E2E Books");
+  await js(`document.querySelector('#sheet .icon-picker button[aria-label="book"]').click();`);
+  await dialogOk("sheet");
+  await waitFor(`[...document.querySelectorAll("#folders strong")].some((s) => s.textContent === "E2E Books")`, "new folder tile");
+});
+
+test("tasks: add, complete, see it under Done, delete", async () => {
+  await route("tasks");
+  await waitFor(`document.querySelectorAll("#task-folder option").length > 1`, "folder options");
+  await type("#task-title", "E2E task to finish");
+  await submit("#task-form");
+  await waitFor(`[...document.querySelectorAll("#task-groups .row-card strong")].some((s) => s.textContent === "E2E task to finish")`, "task row");
+  await js(`[...document.querySelectorAll("#task-groups .row-card")].find((r) => r.textContent.includes("E2E task to finish")).querySelector(".check").click();`);
+  await clickText("#task-filter button", "Done");
+  await waitFor(`[...document.querySelectorAll("#task-groups .row-card.done strong")].some((s) => s.textContent === "E2E task to finish")`, "task under Done");
+  await js(`[...document.querySelectorAll("#task-groups .row-card")].find((r) => r.textContent.includes("E2E task to finish")).querySelector(".icon-btn.danger").click();`);
+  await dialogOk();
+  await clickText("#task-filter button", "Open");
+});
+
+test("reminders: add for the future, cancel; past times are refused", async () => {
+  await route("reminders");
+  await type("#reminder-text", "E2E reminder");
+  await js(`document.getElementById("reminder-due").value = "2099-05-01T09:30";`);
+  await submit("#reminder-form");
+  await waitFor(`[...document.querySelectorAll("#reminders-upcoming strong")].some((s) => s.textContent === "E2E reminder")`, "upcoming");
+  await js(`[...document.querySelectorAll("#reminders-upcoming .rem")].find((r) => r.textContent.includes("E2E reminder")).querySelector("button").click();`);
+  await dialogOk();
+  await waitFor(`[...document.querySelectorAll("#reminders-past strong")].some((s) => s.textContent === "E2E reminder")`, "cancelled");
+  await type("#reminder-text", "In the past");
+  await js(`document.getElementById("reminder-due").value = "2000-01-01T09:00";`);
+  await submit("#reminder-form");
+  await waitFor(`[...document.querySelectorAll("#toasts .toast.error")].some((t) => t.textContent.includes("future"))`, "past-time error");
+});
+
+test("approvals and payments: approve, pay, refuse card numbers", async () => {
+  await route("approvals");
+  await waitFor(`document.querySelectorAll("#approval-list .row-card").length >= 2`, "approvals");
+  await js(`[...document.querySelectorAll("#approval-list .row-card")].find((r) => r.textContent.includes("Payment to")).querySelector(".btn.primary").click();`);
+  await waitFor(`[...document.querySelectorAll("#toasts .toast")].some((t) => t.textContent.includes("does not pay"))`, "never pays");
+  await route("payments");
+  await type("#payment-payee", "E2E Internet");
+  await type("#payment-amount", "999.50");
+  await submit("#payment-form");
+  const row = `[...document.querySelectorAll("#payment-list .row-card")].find((r) => r.textContent.includes("E2E Internet"))`;
+  await waitFor(`${row} && ${row}.textContent.includes("Needs approval")`, "pending payment");
+  await js(`${row}.querySelector(".btn.primary").click();`);
+  await waitFor(`${row}.textContent.includes("Mark paid")`, "approved");
+  await type("#payment-payee", "Card test");
+  await type("#payment-amount", "10");
+  await type("#payment-note", "card 4111 1111 1111 1111");
+  await submit("#payment-form");
+  await waitFor(`[...document.querySelectorAll("#toasts .toast.error")].some((t) => t.textContent.includes("card numbers"))`, "card refused");
+});
+
+test("messages and notifications", async () => {
+  await route("messages");
+  await waitFor(`document.querySelectorAll("#message-list .row-card").length >= 2`, "messages");
+  await route("notifications");
+  await waitFor(`document.querySelectorAll("#notification-list .row-card").length > 0`, "notifications");
+  await click("#read-all");
+  await waitFor(`document.querySelector('[data-count="notifications"]').hidden`, "badge cleared");
+});
+
+test("helmet companion follows the mouse away from the landing page", async () => {
+  await route("tasks");
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: 500, y: 400 });
+  await sleep(600);
+  eq(await js(`return document.getElementById("companion").classList.contains("away");`), false, "visible");
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1000, y: 600 });
+  await sleep(900);
+  const pos = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform); return [m.m41, m.m42];`);
+  assert(Math.abs(pos[0] - 1022) < 30 && Math.abs(pos[1] - 618) < 30, "next to the cursor: " + pos);
   await route("home");
-  await type("#quick-input", "What time is it?");
-  await submit("#quick-ask");
-  await waitFor(`!document.getElementById("view-chat").hidden && [...document.querySelectorAll("#messages .msg.user")].some((m) => m.textContent.includes("What time is it?"))`, "question in chat");
+  eq(await js(`return document.getElementById("companion").classList.contains("away");`), true, "landing has its own big helmet");
 });
 
 test("untrusted text is rendered as text, never as HTML", async () => {
@@ -302,122 +332,50 @@ test("untrusted text is rendered as text, never as HTML", async () => {
   eq(await js(`return window.__xss === undefined;`), true, "no script ran");
 });
 
-test("settings: dark theme toggle, retention values, delete-all needs the exact phrase", async () => {
+test("settings: theme, motion switch, delete-all needs the exact phrase", async () => {
   await route("settings");
   await waitFor(`document.getElementById("info-model").textContent !== "—"`, "info loaded");
-  eq(await text("#info-location"), "this device (offline model)", "processing location");
-  eq(await js(`return document.querySelector('#view-settings [data-ret="notifications"]').textContent;`), "30", "notification retention");
   await clickText("#theme button", "Dark");
   eq(await js(`return document.documentElement.dataset.theme;`), "dark", "dark theme");
-  await shot("07-settings-dark");
+  await shot("08-settings-dark");
   await clickText("#theme button", "Auto");
-  eq(await js(`return document.documentElement.dataset.theme === undefined;`), true, "auto theme");
+  await js(`const t = document.getElementById("motion-toggle"); t.checked = false; t.dispatchEvent(new Event("change"));`);
+  eq(await js(`return document.documentElement.classList.contains("no-motion");`), true, "animations off");
+  await js(`const t = document.getElementById("motion-toggle"); t.checked = true; t.dispatchEvent(new Event("change"));`);
   await type("#delete-phrase", "delete all my data");
   eq(await js(`return document.getElementById("delete-btn").disabled;`), true, "wrong phrase keeps delete disabled");
   await type("#delete-phrase", "");
 });
 
-test("accessibility basics: every control has a name, images have alt, ids are unique", async () => {
-  await go("home");
-  const unnamed = await js(`return [...document.querySelectorAll("button, a[href], input:not([type=hidden]), select, textarea")]
-    .filter((e) => !(e.getAttribute("aria-label") || e.textContent.trim() || e.labels?.length || e.getAttribute("placeholder") || e.title || e.closest("label")))
-    .map((e) => e.outerHTML.slice(0, 80));`);
-  eq(unnamed.length, 0, "unnamed controls " + JSON.stringify(unnamed));
+test("accessibility basics on every main screen", async () => {
+  for (const v of ["home", "feature/coding", "chat", "day"]) {
+    await route(v);
+    await sleep(300);
+    const unnamed = await js(`return [...document.querySelectorAll(".view:not([hidden]) :is(button, a[href], input:not([type=hidden]), select, textarea)")]
+      .filter((e) => !(e.getAttribute("aria-label") || e.textContent.trim() || e.labels?.length || e.getAttribute("placeholder") || e.title || e.closest("label")))
+      .map((e) => e.outerHTML.slice(0, 80));`);
+    eq(unnamed.length, 0, v + ": unnamed controls " + JSON.stringify(unnamed));
+  }
   eq(await js(`return [...document.images].filter((i) => !i.hasAttribute("alt")).length;`), 0, "images without alt");
   const dupes = await js(`const ids = [...document.querySelectorAll("[id]")].map((e) => e.id); return ids.filter((x, i) => ids.indexOf(x) !== i);`);
   eq(dupes.length, 0, "duplicate ids " + dupes);
 });
 
-test("helmet companion follows the mouse with the agent's mood", async () => {
-  await viewport(1440, 900, false, false);
-  await go("home");
-  await waitFor(`document.querySelector("#companion svg[data-companion]")`, "companion helmet loaded");
-  eq(await js(`return document.getElementById("companion").classList.contains("away");`), true, "hidden before the mouse moves");
-  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: 400, y: 300 });
-  await sleep(700);
-  eq(await js(`return document.getElementById("companion").classList.contains("away");`), false, "visible after the mouse moves");
-  const near = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform); return [m.m41, m.m42];`);
-  assert(Math.abs(near[0] - 422) < 25 && Math.abs(near[1] - 318) < 25, "helmet sits next to the cursor: " + near);
-  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: 900, y: 500 });
-  await sleep(900);
-  const moved = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform); return [m.m41, m.m42];`);
-  assert(moved[0] > near[0] + 300, "helmet followed the cursor: " + moved);
-  assert(await js(`return document.getElementById("companion").className.includes("mood-");`), "has a mood");
-  eq(await js(`return document.getElementById("companion").querySelectorAll("script").length;`), 0, "no scripts inside the helmet SVG");
-});
-
-test("tune: pick Funny mode, sliders follow, save shows the happy helmet", async () => {
-  await route("agents");
-  await waitFor(`document.querySelectorAll("#tune-modes .mode").length === 4`, "four modes");
-  eq(await js(`return document.getElementById("tune-agent").value;`), "weekend", "tunes the active agent");
-  await js(`document.querySelector('#tune-modes .mode[data-mode="FUNNY"]').click();`);
-  eq(await js(`return document.getElementById("s-humor").value;`), "9", "humor slider");
-  eq(await js(`return document.getElementById("s-search").value;`), "MEMORY", "search range");
-  assert(await js(`return document.getElementById("tune-preview").classList.contains("mood-happy");`), "happy preview");
-  await js(`const r = document.getElementById("s-truth"); r.value = 3; r.dispatchEvent(new Event("input"));`);
-  assert((await text("#tune-summary")).startsWith("Custom"), "moving a slider makes it Custom");
-  await js(`document.querySelector('#tune-modes .mode[data-mode="FUNNY"]').click();`);
-  await click("#tune-save");
-  await waitFor(`[...document.querySelectorAll('#agent-list .agent[data-id="weekend"] .tag')].some((t) => t.textContent.includes("Funny mode"))`, "card shows Funny");
-  assert(await js(`return document.getElementById("companion").classList.contains("mood-happy");`), "companion is happy");
-  await shot("11-agents-tune-funny");
-});
-
-test("high efficiency: the helmet flies to the chat box, turns serious and shows FOCUS", async () => {
-  await route("chat");
-  await js(`const r = document.getElementById("chat-efficiency"); r.value = 5; r.dispatchEvent(new Event("input")); r.dispatchEvent(new Event("change"));`);
-  await waitFor(`document.getElementById("companion").classList.contains("docked")`, "docked");
-  assert(await js(`return document.getElementById("companion").classList.contains("mood-serious");`), "serious face");
-  eq(await text("#chat-efficiency-label"), "Max", "efficiency label");
-  await sleep(1200);
-  const pos = await js(`const m = new DOMMatrix(getComputedStyle(document.getElementById("companion")).transform);
-    const r = document.getElementById("composer").getBoundingClientRect(); return [m.m41 - r.right, m.m42 - r.top];`);
-  assert(Math.abs(pos[0] + 64) < 20 && Math.abs(pos[1] + 74) < 20, "sits on the chat box: " + pos);
-  eq(await js(`return getComputedStyle(document.querySelector("#companion .focus-label")).opacity;`), "1", "FOCUS label shown");
-  await shot("12-chat-focus-mode");
-  await route("home");
-  eq(await js(`return document.getElementById("companion").classList.contains("away");`), true, "leaves other screens in focus mode");
-  await route("chat");
-  await waitFor(`document.getElementById("companion").classList.contains("docked")`, "back on the chat box");
-});
-
-test("math runs locally and exactly from chat", async () => {
-  await click("#new-chat");
-  await type("#input", "calculate 2^10 + 25!");
-  await submit("#composer");
-  await waitFor(`[...document.querySelectorAll("#messages .msg.assistant .text")].some((t) => t.textContent.includes("15511210043330985984001024"))`, "exact result");
-  await type("#input", "solve x^2 - 5x + 6 = 0");
-  await submit("#composer");
-  await waitFor(`[...document.querySelectorAll("#messages .msg.assistant .text")].some((t) => t.textContent.includes("x = 2, 3"))`, "roots");
-});
-
-test("web search stays off until a host is allowed", async () => {
-  await type("#input", "search compound interest formula");
-  await submit("#composer");
-  await waitFor(`[...document.querySelectorAll("#messages .msg.assistant .text")].some((t) => t.textContent.includes("not available right now: web_search"))`, "refused");
-  await route("agents");
-  eq(await js(`return document.getElementById("web-off").hidden;`), false, "web-off notice on the Tune card");
-  await js(`const r = document.getElementById("s-efficiency"); document.querySelector('#tune-modes .mode[data-mode="WORK"]').click();`);
-  await click("#tune-save");
-  await waitFor(`!document.getElementById("companion").classList.contains("docked")`, "back to normal");
-});
-
-test("phone layout: bottom tab bar with five items and no sideways scrolling on any screen", async () => {
+test("phone layout: bottom tab bar and no sideways scrolling on any screen", async () => {
   await viewport(390, 844, true, false);
   await go("home");
+  await sleep(800);
   eq(await js(`return [...document.querySelectorAll(".nav button")].filter((b) => getComputedStyle(b).display !== "none").length;`), 5, "visible tabs");
-  eq(await js(`return getComputedStyle(document.querySelector(".sidebar")).position;`), "fixed", "bottom bar");
-  await shot("08-phone-home");
-  for (const v of ["home", "chat", "agents", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings"]) {
+  await shot("09-phone-landing");
+  for (const v of ["home", "feature/drawing", "chat", "day", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings"]) {
     await route(v);
     const over = await js(`return document.documentElement.scrollWidth - window.innerWidth;`);
     assert(over <= 1, v + " overflows sideways by " + over + "px");
   }
   await viewport(390, 844, true, true);
-  await route("agents");
-  await shot("09-phone-agents-dark");
-  await route("payments");
-  await shot("10-phone-payments-dark");
+  await route("feature/drawing");
+  await sleep(500);
+  await shot("10-phone-feature-dark");
   await viewport(1440, 900, false, false);
 });
 

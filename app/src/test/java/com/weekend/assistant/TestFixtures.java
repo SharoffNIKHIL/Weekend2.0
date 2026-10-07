@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.util.List;
 
 /** Shared test helpers: default properties and a clock tests can move forward. */
 public final class TestFixtures {
@@ -21,18 +20,6 @@ public final class TestFixtures {
     }
 
     public static WeekendProperties props(BigDecimal dailyCap) {
-        return props(dailyCap, agents(List.of(), List.of()));
-    }
-
-    public static WeekendProperties.Agents agents(List<String> allowedHosts, List<WeekendProperties.CustomAgent> custom) {
-        return new WeekendProperties.Agents(allowedHosts, Duration.ofSeconds(5), custom);
-    }
-
-    public static WeekendProperties props(WeekendProperties.Agents agents) {
-        return props(new BigDecimal("0.62"), agents);
-    }
-
-    public static WeekendProperties props(BigDecimal dailyCap, WeekendProperties.Agents agents) {
         return new WeekendProperties(
                 "Asia/Kolkata",
                 new WeekendProperties.Llm("local", "", "global", "claude-haiku-4-5@20251001", "claude-sonnet-5", 1024,
@@ -41,20 +28,42 @@ public final class TestFixtures {
                 new WeekendProperties.Retention(Duration.ofDays(365), Duration.ofDays(180), Duration.ofDays(90), Duration.ofDays(730),
                         Duration.ofDays(30), Duration.ofDays(365)),
                 new WeekendProperties.Security(KEY, Duration.ofHours(12), true),
-                agents, null, null, null);
+                null, null, null, null);
     }
 
     /** Same defaults with other pressure, web or owner settings. */
     public static WeekendProperties with(WeekendProperties p, WeekendProperties.Pressure pressure, WeekendProperties.Web web,
             WeekendProperties.Owner owner) {
-        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), p.security(), p.agents(),
+        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), p.security(), p.notion(),
                 pressure, web, owner);
+    }
+
+    public static WeekendProperties withNotion(WeekendProperties.Notion notion) {
+        WeekendProperties p = props();
+        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), p.security(), notion,
+                p.pressure(), p.web(), p.owner());
     }
 
     public static WeekendProperties withSecurity(WeekendProperties.Security security) {
         WeekendProperties p = props();
-        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), security, p.agents(),
+        return new WeekendProperties(p.ownerTimezone(), p.llm(), p.agent(), p.retention(), security, p.notion(),
                 p.pressure(), p.web(), p.owner());
+    }
+
+    /** A solid-colour PNG, base64-encoded (no data-URL prefix). */
+    public static String png(int w, int h, java.awt.Color c) {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setColor(c);
+        g.fillRect(0, 0, w, h);
+        g.dispose();
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try {
+            javax.imageio.ImageIO.write(img, "png", out);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+        return java.util.Base64.getEncoder().encodeToString(out.toByteArray());
     }
 
     /** A clock fixed at a moment that tests can advance. */

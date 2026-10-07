@@ -15,10 +15,9 @@ import com.weekend.assistant.port.ToolCallRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
-import com.weekend.assistant.agents.AgentDirectory;
-import com.weekend.assistant.domain.AgentConditions;
-import com.weekend.assistant.domain.AgentKind;
+import com.weekend.assistant.features.FeatureCatalog;
 import com.weekend.assistant.domain.Folder;
 import com.weekend.assistant.domain.InboxMessage;
 import com.weekend.assistant.domain.Notification;
@@ -43,15 +42,15 @@ public class DataService {
     private final ReminderRepository reminders;
     private final ToolCallRepository toolCalls;
     private final Workspace workspace;
-    private final AgentDirectory agents;
+    private final FeatureCatalog features;
     private final AuditLog audit;
     private final Clock clock;
 
     public DataService(ConversationRepository conversations, MessageRepository messages, MemoryRepository memories,
-            ReminderRepository reminders, ToolCallRepository toolCalls, Workspace workspace, AgentDirectory agents,
+            ReminderRepository reminders, ToolCallRepository toolCalls, Workspace workspace, FeatureCatalog features,
             AuditLog audit, Clock clock) {
         this.workspace = workspace;
-        this.agents = agents;
+        this.features = features;
         this.conversations = conversations;
         this.messages = messages;
         this.memories = memories;
@@ -63,12 +62,9 @@ public class DataService {
 
     public Export export(String actor) {
         audit.append(actor, "data.export", "all");
-        List<AgentExport> agentList = agents.all().stream()
-                .map(a -> new AgentExport(a.id(), a.name(), a.kind(), a.instructions(), a.instructionsSource(), a.conditions(), a.endpoint()))
-                .toList();
         return new Export(clock.instant(), conversations.findAll(), messages.findAll(), memories.findAll(),
                 reminders.findAll(), toolCalls.findAll(), workspace.folders().findAll(), workspace.tasks().findAll(),
-                workspace.payments().findAll(), workspace.inbox().findAll(), workspace.notifications().findAll(), agentList,
+                workspace.payments().findAll(), workspace.inbox().findAll(), workspace.notifications().findAll(), features.overrides(),
                 audit.findAll());
     }
 
@@ -87,7 +83,7 @@ public class DataService {
         workspace.payments().deleteAll();
         workspace.inbox().deleteAll();
         workspace.notifications().deleteAll();
-        agents.deleteOwnerCreated();
+        features.resetAll();
         audit.append("owner", "data.delete_all", "all");
         return true;
     }
@@ -97,12 +93,8 @@ public class DataService {
     public record Workspace(FolderRepository folders, TaskRepository tasks, PaymentRepository payments,
             InboxMessageRepository inbox, NotificationRepository notifications) {}
 
-    /** Agents in the export (P6: everything the owner wrote), minus inbound-token hashes. */
-    public record AgentExport(String id, String name, AgentKind kind, String instructions, String instructionsSource,
-            AgentConditions conditions, String endpoint) {}
-
     public record Export(Instant exportedAt, List<Conversation> conversations, List<Message> messages,
             List<Memory> memories, List<Reminder> reminders, List<ToolCallRecord> toolCalls, List<Folder> folders,
             List<Task> tasks, List<Payment> payments, List<InboxMessage> inboxMessages, List<Notification> notifications,
-            List<AgentExport> agents, List<AuditEntry> auditLog) {}
+            Map<String, Map<String, Object>> featureSettings, List<AuditEntry> auditLog) {}
 }

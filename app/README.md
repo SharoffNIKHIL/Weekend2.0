@@ -34,13 +34,13 @@ The `ui` profile seeds made-up demo memories and reminders (in memory only, gone
 - **Home:** greeting, quick ask, six category tiles (Reminders, Tasks, Approvals, Payments, Messages, Notifications) with live counts, folder icons that preview up to four items each, and "Up next".
 - **Folders** group tasks and reminders (`#folder/<id>`). Deleting a folder keeps its items.
 - **Tasks, Reminders, Approvals, Payments, Messages, Notifications, Memories, Settings** screens; sidebar on desktop, five-tab bottom bar on phones; light/dark/auto.
-- **Agents:** pick who answers in Chat, view an agent's instructions, set its conditions, create your own, or connect a remote agent.
+- **Features:** pick what Weekend is for (Optimal, Research, Coding, Drawing, Image, Notes …); each feature page shows its plugins, connectors, guidelines and Customise panel.
 - **Payments are tracking only.** Weekend never moves money and refuses card numbers (Luhn-checked).
 
 The `ui` profile also loads the **Project agent** from `~/CLAUDE.md` (override with `WEEKEND_PROJECT_AGENT_INSTRUCTIONS`) and connects a loopback **Demo agent** (`/demo-agent`), so remote-agent chat can be tried without anything leaving the Mac. Screenshots: [`docs/ui/`](../docs/ui/).
 
 ## Personality, modes and focus mode
-Every agent except remote ones has a **persona**, tuned on the Agents screen ("Tune") or from the chat box:
+Every feature has a **persona**, tuned in its Customise panel or from the chat box:
 | Setting | Range | What it changes |
 |---|---|---|
 | Humor | 0–10 | Tone guidance; raises the sampling temperature |
@@ -48,7 +48,7 @@ Every agent except remote ones has a **persona**, tuned on the Agents screen ("T
 | Focus | 0–10 | High = shortest on-task answer, no tangents |
 | Efficiency | Eco · Balanced · Standard · High · Max | Model (High/Max = strong), tool steps 2–10, answer length 512–4096 tokens, memories 4–16, history 8–40. High/Max = **focus mode**: the helmet flies to the chat box, turns serious and shows FOCUS. Costs more; the daily cap still applies |
 | Search range | Off · Memory · Web · Wide | Which lookup tools exist (Wide = 6 results + summaries) |
-| Approval range | All · Writes and external · Writes only | What waits for your yes. Writes and messages to other agents always ask |
+| Approval range | All · Writes and external · Writes only | What waits for your yes. Writes always ask |
 
 Modes are presets: **Funny** (happy face), **Disciplined** (serious, asks before every tool), **Work** (calm, default), **Browse** (curious, web searches pre-approved). Moving a slider makes it Custom.
 
@@ -63,14 +63,18 @@ Modes are presets: **Funny** (happy face), **Disciplined** (serious, asks before
 ## High pressure
 At most `WEEKEND_MAX_CONCURRENT_CHATS` (default 4) chat turns run at once; others wait up to 10 s, then get HTTP 503 with `Retry-After`. Model errors are retried twice with exponential backoff (400 ms, 800 ms). The daily cost cap still applies.
 
-## Agents
-| Kind | What it is | Safety |
+## Features (one agent, many behaviours)
+Weekend is **one agent: yours**. Home greets you by name ("Hi <name>." from the `- name:` line of your private profile) and asks which feature to explore:
+| Group | Features | What changes |
 |---|---|---|
-| Built in | Weekend itself, the default | Write tools wait for your yes |
-| Custom | Your instructions + conditions on the same model; from config (e.g. CLAUDE.md, read at start-up, never committed, max 64 KiB, refused if it contains credentials) or created in the app | Instructions are added *after* the fixed safety rules, which always win. Conditions: allowed tools, "every action waits for my yes", always think harder, max tool steps (≤ 10) |
-| Remote | Another agent over HTTPS, protocol **weekend-agent/1**: `POST <endpoint>/message {"message","conversationId","from":"weekend"}` → `{"reply"}`, `GET <endpoint>/health` | 🔓 Every message waits for your yes. Host must be on `WEEKEND_AGENT_ALLOWED_HOSTS` (empty by default; adding one is a security checkpoint). https only (http on loopback), no redirects, 20 s timeout, 64 KiB reply cap, secrets redacted before sending; replies are DATA |
+| How I think | Optimal · Hard · Smooth · Focused | Persona (humor, truth, focus, efficiency), guidelines, model and budget |
+| Workspaces | Research · Coding · Financial · Designing · Drawing · Image · Notes | Guidelines **plus the attached plugins and connectors** |
 
-Inbound: a remote agent gets a one-time token at connect time (Weekend keeps only its SHA-256) and posts to `POST /agent-inbox` with `Authorization: Bearer <token>` and `{"subject","body"}` → Messages. Max 60 per agent per hour; deleting the agent revokes the token. On Cloud Run this path is only reachable through the private network (internal ingress + tailnet). A2A-protocol support is a possible later adapter (`Not verified` against the current A2A spec).
+Plugins run inside Weekend (Clock, Memory, Tasks, Math, Payments, **Image analysis**, **Art studio**); connectors talk to outside services (🔓 **Web research**, **Notion**) and stay off until configured after a security checkpoint. Each feature page shows what is attached, why something is off, its guidelines, example prompts and a **Customise** panel (mode, sliders, ranges, your own extra instructions). Your settings are exported and deleted with your data (P6).
+
+- **Images (Claude vision):** attach up to 4 PNG/JPEG/WebP/GIF images (≤ 5 MB; large ones are scaled to 1568 px in the browser). They go to Claude for that turn only and are never stored (P5); 🔓 with Vertex they leave Weekend like the prompt.
+- **Art (Claude only):** Claude cannot paint pixels; Drawing/Designing/Image ask it for **original SVG**, which the app sanitises and renders, with **4K PNG** (3840 px canvas) and SVG download.
+- **Notion connector:** `WEEKEND_NOTION_TOKEN` (internal integration secret, Secret Manager) + `WEEKEND_NOTION_PARENT_PAGE`; search pages and save notes, both asking first. Notion-Version 2022-06-28 (verify on first enable).
 
 ## Configuration (environment variables)
 | Variable | Default | Meaning |
@@ -121,7 +125,7 @@ Implement `tools.Tool` as a Spring `@Component`: give it a `name()` (`^[a-z][a-z
 ## API
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/chat` | `{message, conversationId?, thinkHarder?}` → reply, model, tools used, pending confirmation, cost |
+| POST | `/api/chat` | `{message, conversationId?, thinkHarder?, featureId?, images?}` → reply, model, tools used, pending confirmation, cost |
 | GET / POST | `/api/pending`, `/api/confirm/{id}` | List / answer write-tool confirmations (`{approved}`) |
 | GET / POST / DELETE | `/api/memories`, `/api/memories/{id}/pin`, `/api/memories/{id}` | View, pin, delete memories (P6) |
 | GET / DELETE | `/api/reminders`, `/api/reminders/{id}` | List / cancel reminders |
@@ -134,10 +138,9 @@ Implement `tools.Tool` as a Spring `@Component`: give it a `name()` (`^[a-z][a-z
 | GET / POST | `/api/approvals`, `/api/approvals/{tool\|payment}/{id}` | One queue for tool calls and payments waiting on you |
 | GET / POST / DELETE | `/api/payments`, `/api/payments/{id}/decision`, `/paid` | Payment tracking (never pays) |
 | GET / POST / DELETE | `/api/messages`, `/api/notifications`, `/read`, `/read-all` | Agent messages and in-app notifications |
-| GET / POST / PUT / DELETE | `/api/agents`, `/custom`, `/remote`, `/{id}/instructions`, `/{id}/conditions`, `/{id}/test` | Agents; `POST /api/chat` takes `agentId` |
-| PUT | `/api/agents/{id}/persona` | Mode, humor, truth, focus, efficiency, search range, approval range |
+| GET / PUT / POST | `/api/features`, `/{id}`, `/{id}/persona`, `/{id}/instructions`, `/{id}/reset` | Features with plugin/connector status; your per-feature settings |
+| GET | `/api/me` | Your name and a few profile facts for the greeting |
 | GET | `/brand.json` | Which private brand files exist (no content) |
-| POST | `/agent-inbox` | Inbound messages from connected agents (agent token, not the owner session) |
 | GET | `/api/info` | Non-secret settings for the Settings screen: models, processing location, retention, cost cap |
 | GET | `/healthz` | Liveness |
 
@@ -145,7 +148,7 @@ Implement `tools.Tool` as a Spring `@Component`: give it a `name()` (`^[a-z][a-z
 ```bash
 cd app && mvn -B verify     # 219 JUnit tests: unit, HTTP integration (sessions on), real-port end to end (offline, no cloud)
 
-# Browser end-to-end (25 tests, headless Chrome, Node 22+, no npm packages):
+# Browser end-to-end (21 tests, headless Chrome, Node 22+, no npm packages):
 java -jar target/weekend-assistant.jar --spring.profiles.active=local,ui &   # loopback preview env
 node src/test/e2e/ui.e2e.mjs                                                 # SHOTS_DIR=… saves screenshots
 ```

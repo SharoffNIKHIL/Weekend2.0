@@ -1,4 +1,4 @@
-package com.weekend.assistant.agents;
+package com.weekend.assistant.net;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

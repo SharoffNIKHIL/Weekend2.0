@@ -26,7 +26,8 @@ import org.springframework.stereotype.Component;
  * as pinned memories at start-up. Pinned memories are always in the agent's context (P5: kept until the owner deletes
  * them; P6: exported and deleted like any memory; 🔓 P7: sent to the model with each prompt).
  *
- * <p>Format: one item per line starting with "- ", optionally typed: "- fact: …", "- pref: …", "- task: …".
+ * <p>Format: one item per line starting with "- ", optionally typed: "- fact: …", "- pref: …", "- task: …";
+ * "- name: …" sets the name used in the greeting (not stored as a memory).
  * Headings and other lines are ignored. Lines that look like secrets are skipped. Re-runs do not duplicate.
  */
 @Component
@@ -39,6 +40,7 @@ public class OwnerProfile implements ApplicationRunner {
     private final MemoryService memories;
     private final String file;
     private int loaded;
+    private volatile String name;
 
     public OwnerProfile(MemoryService memories, WeekendProperties props) {
         this.memories = memories;
@@ -67,6 +69,8 @@ public class OwnerProfile implements ApplicationRunner {
 
     /** Imports profile text; returns how many new memories were added. */
     public int importText(String text) {
+        text.lines().map(String::strip).filter(l -> l.toLowerCase(Locale.ROOT).startsWith("- name:")).findFirst()
+                .map(l -> l.substring(7).strip()).filter(n -> !n.isEmpty() && n.length() <= 40).ifPresent(n -> name = n);
         Set<String> existing = memories.all().stream().map(m -> m.text().toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
         int added = 0;
         for (Item item : parse(text)) {
@@ -85,7 +89,8 @@ public class OwnerProfile implements ApplicationRunner {
 
     static List<Item> parse(String text) {
         return text.lines().map(String::strip).filter(l -> l.startsWith("- ") || l.startsWith("* "))
-                .map(l -> l.substring(2).strip()).filter(l -> !l.isEmpty()).limit(MAX_ITEMS).map(OwnerProfile::item).toList();
+                .map(l -> l.substring(2).strip()).filter(l -> !l.isEmpty() && !l.toLowerCase(Locale.ROOT).startsWith("name:"))
+                .limit(MAX_ITEMS).map(OwnerProfile::item).toList();
     }
 
     private static Item item(String line) {
@@ -96,6 +101,11 @@ public class OwnerProfile implements ApplicationRunner {
             }
         }
         return new Item(MemoryKind.FACT, line);
+    }
+
+    /** The owner's name from the profile, or null. */
+    public String name() {
+        return name;
     }
 
     public int loaded() {

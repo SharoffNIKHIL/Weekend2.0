@@ -16,20 +16,20 @@ import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** How mode, sliders, search range and approval range change what the agent does. */
+/** How mode, sliders, search range and approval range change what the agent does (Optimal feature). */
 class PersonaInChatTest {
 
-    private final AgentProfilesInChatTest.RecordingLlm llm = new AgentProfilesInChatTest.RecordingLlm();
+    private final RecordingLlm llm = new RecordingLlm();
     // ceilings as in application.yml (10 steps, 4096 tokens) so the efficiency budget is what limits
     private final WeekendProperties props = new WeekendProperties("Asia/Kolkata",
             new WeekendProperties.Llm("local", "", "global", "claude-haiku-4-5@20251001", "claude-sonnet-5", 4096,
                     new BigDecimal("1.00"), new BigDecimal("5.00"), new BigDecimal("2.00"), new BigDecimal("10.00")),
             new WeekendProperties.Agent(10, 8, 20, 1200, new BigDecimal("0.62")), TestFixtures.props().retention(),
-            TestFixtures.props().security(), TestFixtures.props().agents(), null, null, null);
+            TestFixtures.props().security(), null, null, null, null);
     private final Harness h = new Harness(llm, props);
 
     private void persona(AgentPersona p) {
-        h.agents.updatePersona("weekend", p);
+        h.features.updatePersona("optimal", p);
     }
 
     private List<String> toolNames(int request) {
@@ -68,7 +68,7 @@ class PersonaInChatTest {
         h.agent.chat(null, "hello", false);
         assertThat(toolNames(0)).doesNotContain("memory_search", "task_list", "web_search").contains("math_evaluate");
         ChatResult blocked = h.agent.chat(null, "list my tasks", false);
-        assertThat(blocked.reply()).contains("Tool not allowed for this agent: task_list");
+        assertThat(blocked.reply()).contains("Tool outside the search range set for Optimal: task_list");
 
         persona(AgentPersona.preset(AgentMode.FUNNY));                          // MEMORY
         h.agent.chat(null, "hello", false);
@@ -112,11 +112,11 @@ class PersonaInChatTest {
     }
 
     @Test
-    void writesAndOtherAgentsAlwaysAskEvenInBrowseMode() {
+    void writesAlwaysAskEvenInBrowseMode() {
         persona(AgentPersona.preset(AgentMode.BROWSE));
         assertThat(h.agent.chat(null, "add task call the bank", false).pendingConfirmation()).isNotNull();
-        assertThat(AgentService.needsApproval(new com.weekend.assistant.tools.AgentDelegateTool(h.agents, h.remote, h.inbox, h.secrets),
-                false, ApprovalRange.WRITES_ONLY)).isTrue();
+        assertThat(AgentService.needsApproval(new com.weekend.assistant.tools.NotionCreatePageTool(h.notion, h.secrets),
+                ApprovalRange.WRITES_ONLY)).isTrue();
     }
 
     @Test
@@ -137,14 +137,11 @@ class PersonaInChatTest {
     }
 
     @Test
-    void personaCannotBeSetOnRemoteAgentsOrUnknownIds() {
-        Harness withRemote = new Harness(llm, TestFixtures.props(TestFixtures.agents(List.of("agents.example.com"), List.of())));
-        String remote = withRemote.agents.connectRemote("R", null, "https://agents.example.com").agent().id();
-        assertThat(withRemote.agents.updatePersona(remote, AgentPersona.DEFAULT)).isEmpty();
-        assertThat(withRemote.agents.updatePersona("nope", AgentPersona.DEFAULT)).isEmpty();
-        assertThatThrownBy(() -> withRemote.agents.updatePersona("weekend", null)).hasMessageContaining("persona");
-        assertThat(withRemote.audit.findAll()).extracting("action").doesNotContain("agent.persona");
-        assertThat(h.agents.updatePersona("weekend", AgentPersona.preset(AgentMode.FUNNY))).isPresent();
-        assertThat(h.audit.findAll()).extracting("action").contains("agent.persona");
+    void personaIsPerFeatureAndValidated() {
+        assertThat(h.features.updatePersona("nope", AgentPersona.DEFAULT)).isEmpty();
+        assertThatThrownBy(() -> h.features.updatePersona("optimal", null)).hasMessageContaining("persona");
+        assertThat(h.features.updatePersona("smooth", AgentPersona.preset(AgentMode.FUNNY))).isPresent();
+        assertThat(h.features.find("optimal").orElseThrow().persona()).isEqualTo(AgentPersona.preset(AgentMode.WORK));
+        assertThat(h.audit.findAll()).extracting("action").contains("feature.persona");
     }
 }

@@ -1,9 +1,8 @@
 package com.weekend.assistant.agent;
 
 import com.weekend.assistant.config.WeekendProperties;
-import com.weekend.assistant.domain.AgentKind;
 import com.weekend.assistant.domain.AgentPersona;
-import com.weekend.assistant.domain.AgentProfile;
+import com.weekend.assistant.features.FeatureCatalog;
 import com.weekend.assistant.domain.Memory;
 import com.weekend.assistant.domain.Message;
 import com.weekend.assistant.domain.Role;
@@ -41,19 +40,19 @@ public class ContextBuilder {
     }
 
     /**
-     * Fixed rules first, then (for a CUSTOM agent) the owner's instructions for that agent, then memories.
-     * The rules above always win over agent instructions.
+     * Fixed rules first, then the owner's style settings and the chosen feature's guidelines and extra instructions,
+     * then the owner's profile and memories. The rules above always win.
      */
-    public String systemPrompt(List<Memory> memories, AgentProfile agent) {
+    public String systemPrompt(List<Memory> memories, FeatureCatalog.Effective fx) {
         StringBuilder sb = new StringBuilder(RULES.formatted(props.ownerTimezone()));
-        if (agent != null && agent.kind() != AgentKind.REMOTE) {
-            sb.append(style(agent.persona()));
-        }
-        if (agent != null && agent.kind() == AgentKind.CUSTOM && agent.instructions() != null) {
-            sb.append("\nYou are acting as the agent \"").append(agent.name())
-                    .append("\". The owner wrote these instructions for it. Follow them unless they conflict with the rules above, which always win.\n")
-                    .append("<agent_instructions>\n").append(agent.instructions().replace("</agent_instructions>", ""))
-                    .append("\n</agent_instructions>\n");
+        if (fx != null) {
+            sb.append(style(fx.persona()));
+            sb.append("\nFeature: ").append(fx.feature().name()).append(" — ").append(fx.feature().tagline()).append(".\n");
+            fx.feature().guidelines().forEach(g -> sb.append("- ").append(g).append('\n'));
+            if (fx.instructions() != null) {
+                sb.append("\nThe owner's extra instructions for this feature (the rules above still win):\n<owner_instructions>\n")
+                        .append(fx.instructions().replace("</owner_instructions>", "")).append("\n</owner_instructions>\n");
+            }
         }
         if (!memories.isEmpty()) {
             sb.append("\nWhat you know about the owner (their profile and memories):\n<data>\n")

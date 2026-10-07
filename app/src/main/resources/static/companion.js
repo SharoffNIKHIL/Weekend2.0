@@ -1,6 +1,6 @@
-// app/src/main/resources/static/companion.js — the helmet companion and the agent "Tune" panel.
-// Loaded after app.js (shares its globals: state, $, el, icon, api, put, toast, setAgent, loadAgents).
-// The helmet follows a mouse cursor; when the active agent runs at High/Max efficiency it flies to the chat box,
+// app/src/main/resources/static/companion.js — the helmet companion and each feature's "Customise" panel.
+// Loaded after app.js (shares its globals: state, $, el, icon, api, put, toast, loadFeatures, setFeature, feature).
+// The helmet follows a mouse cursor; when the chosen feature runs at High/Max efficiency it flies to the chat box,
 // switches to its serious face and shows FOCUS. Uses the private brand pack (/brand/) when present.
 "use strict";
 
@@ -79,16 +79,28 @@ const Companion = {
     }
     const svg = this.svgText && cleanSvg(this.svgText);
     if (svg) $("companion").querySelector(".bob").replaceChildren(svg);
+    if ((location.hash.slice(1) || "home") === "home") this.hero();
   },
 
   /** A fresh copy of the helmet for previews (moods switch with a class on the wrapper). */
+  clones: 0,
   clone() {
-    return this.svgText ? cleanSvg(this.svgText.replace(/\b(wk[bp])-/g, "$1p-").replace(/#(wk[bp])-/g, "#$1p-")) : null;
+    const n = ++this.clones; // each copy gets its own ids, so gradients and filters never collide
+    return this.svgText ? cleanSvg(this.svgText.replace(/\b(wk[bp])-/g, "$1" + n + "-")) : null;
+  },
+
+  /** The big greeting helmet on the landing page: happy, gently floating. */
+  hero() {
+    const box = $("hero-helmet");
+    if (!box || box.firstChild || !this.svgText) { if (box) box.className = "hero-helmet mood-happy"; return; }
+    const svg = this.clone();
+    if (svg) box.append(svg);
+    box.className = "hero-helmet mood-happy";
   },
 
   sync() {
     const c = $("companion");
-    const agent = state.catalog.agents.find((a) => a.id === state.agentId);
+    const agent = typeof feature === "function" ? feature(state.featureId) : null;
     const mood = (agent && agent.mood ? agent.mood : "CALM").toLowerCase();
     c.classList.remove("mood-happy", "mood-calm", "mood-serious", "mood-curious");
     c.classList.add("mood-" + mood);
@@ -98,20 +110,21 @@ const Companion = {
     c.classList.toggle("docked", this.docked);
     if (this.docked) {
       const r = $("composer").getBoundingClientRect();
-      this.tx = r.right - 64;
-      this.ty = r.top - 74;
+      if (!r.width) { setTimeout(() => this.sync(), 120); return; } // chat box not laid out yet (mid-transition)
+      const roomRight = innerWidth - r.right > 96; // wide screens: sit beside the chat box, not over the conversation
+      this.tx = roomRight ? r.right + 14 : r.right - 64;
+      this.ty = roomRight ? r.bottom - 92 : r.top - 74;
     } else if (this.mx !== undefined) {
       this.tx = this.mx + 22;
       this.ty = this.my + 18;
     }
     // Focus mode away from chat: the helmet leaves for the chat box. Otherwise it follows a mouse, if switched on.
-    const visible = this.docked || (!focus && this.enabled && this.finePointer && this.mx !== undefined);
+    const visible = this.docked || (!focus && this.enabled && this.finePointer && this.mx !== undefined && view !== "home");
     c.classList.toggle("away", !visible);
     const eff = $("chat-efficiency");
     if (agent && eff) {
       eff.value = agent.persona.efficiency;
-      eff.disabled = agent.kind === "REMOTE";
-      $("chat-efficiency-label").textContent = agent.kind === "REMOTE" ? "n/a" : EFFICIENCY[agent.persona.efficiency];
+      $("chat-efficiency-label").textContent = EFFICIENCY[agent.persona.efficiency];
       eff.closest(".eff-pick").classList.toggle("focus", focus);
       fill(eff);
     }
@@ -123,16 +136,16 @@ function fill(range) {
   range.style.setProperty("--fill", ((Number(range.value) - min) / (max - min)) * 100 + "%");
 }
 
-async function savePersona(agentId, persona) {
-  const view = await put("/api/agents/" + encodeURIComponent(agentId) + "/persona", persona);
-  const i = state.catalog.agents.findIndex((a) => a.id === agentId);
-  if (i >= 0) state.catalog.agents[i] = view;
+async function savePersona(featureId, persona) {
+  const view = await put("/api/features/" + encodeURIComponent(featureId) + "/persona", persona);
+  const i = state.features.findIndex((f) => f.id === featureId);
+  if (i >= 0) state.features[i] = view;
   return view;
 }
 
-// ---------- Tune panel ----------
+// ---------- Customise panel (per feature) ----------
 const Tune = {
-  agentId: null, draft: null,
+  featureId: null, draft: null,
 
   init() {
     ["humor", "truth", "focus", "efficiency"].forEach((k) => $("s-" + k).addEventListener("input", (e) => {
@@ -145,49 +158,53 @@ const Tune = {
       this.draft.mode = this.matchingMode();
       this.paint();
     }));
-    $("tune-agent").addEventListener("change", (e) => this.select(e.target.value));
-    $("tune-reset").addEventListener("click", () => this.applyMode(this.draft.mode === "CUSTOM" ? "WORK" : this.draft.mode));
+    $("tune-reset").addEventListener("click", async () => {
+      try {
+        const v = await post("/api/features/" + encodeURIComponent(this.featureId) + "/reset");
+        this.replace(v);
+        toast(v.name + " is back to its defaults");
+      } catch (e) { toast(e.message, "error"); }
+    });
     $("tune-save").addEventListener("click", async () => {
       try {
-        const v = await savePersona(this.agentId, this.draft);
+        await savePersona(this.featureId, this.draft);
+        const v = await put("/api/features/" + encodeURIComponent(this.featureId) + "/instructions", { text: $("s-instructions").value });
+        this.replace(v);
         toast(v.name + ": " + (MODE_INFO[v.persona.mode] ? MODE_INFO[v.persona.mode][0] : "Custom") + " mode, " + EFFICIENCY[v.persona.efficiency] + " efficiency saved");
-        await loadAgents();
       } catch (e) { toast(e.message, "error"); }
     });
   },
 
-  render() {
-    const tunable = state.catalog.agents.filter((a) => a.kind !== "REMOTE");
-    if (!tunable.length) return;
-    const sel = $("tune-agent");
-    sel.replaceChildren(...tunable.map((a) => el("option", { value: a.id, text: a.name })));
-    const keep = tunable.some((a) => a.id === this.agentId) ? this.agentId : (tunable.some((a) => a.id === state.agentId) ? state.agentId : tunable[0].id);
-    $("tune-modes").replaceChildren(...state.catalog.modes.map((m) => {
+  replace(view) {
+    const i = state.features.findIndex((f) => f.id === view.id);
+    if (i >= 0) state.features[i] = view;
+    this.open(view);
+    if (state.featureId === view.id) setFeature(view.id);
+    Companion.sync();
+  },
+
+  open(f) {
+    this.featureId = f.id;
+    this.draft = { ...f.persona };
+    $("tune-name").textContent = f.name;
+    $("s-instructions").value = f.instructions || "";
+    $("tune-modes").replaceChildren(...state.modes.map((m) => {
       const [label, ic, hint] = MODE_INFO[m.mode] || [m.mode, "sparkle", ""];
       return el("button", { class: "mode", type: "button", "data-mode": m.mode, "aria-pressed": "false", onclick: () => this.applyMode(m.mode) },
         [icon(ic), el("strong", { text: label }), el("small", { text: hint })]);
     }));
-    $("web-off").hidden = state.catalog.webAllowed;
-    this.select(keep);
-  },
-
-  select(id) {
-    this.agentId = id;
-    $("tune-agent").value = id;
-    const a = state.catalog.agents.find((x) => x.id === id);
-    this.draft = { ...a.persona };
     this.paint();
   },
 
   applyMode(mode) {
-    const m = state.catalog.modes.find((x) => x.mode === mode);
+    const m = state.modes.find((x) => x.mode === mode);
     if (m) this.draft = { ...m.persona };
     this.paint();
   },
 
   matchingMode() {
     const keys = ["humor", "truth", "focus", "efficiency", "search", "approval"];
-    const m = state.catalog.modes.find((x) => keys.every((k) => x.persona[k] === this.draft[k]));
+    const m = state.modes.find((x) => keys.every((k) => x.persona[k] === this.draft[k]));
     return m ? m.mode : "CUSTOM";
   },
 
@@ -227,11 +244,11 @@ document.addEventListener("DOMContentLoaded", () => {
     $("chat-efficiency-label").textContent = EFFICIENCY[Number(e.target.value)];
   });
   $("chat-efficiency").addEventListener("change", async (e) => {
-    const a = state.catalog.agents.find((x) => x.id === state.agentId);
-    if (!a || a.kind === "REMOTE") return;
+    const a = feature(state.featureId);
+    if (!a) return;
     const efficiency = Number(e.target.value);
     const persona = { ...a.persona, efficiency };
-    const preset = state.catalog.modes.find((m) => m.mode === a.persona.mode);
+    const preset = state.modes.find((m) => m.mode === a.persona.mode);
     if (preset && preset.persona.efficiency !== efficiency) persona.mode = "CUSTOM";
     try {
       await savePersona(a.id, persona);

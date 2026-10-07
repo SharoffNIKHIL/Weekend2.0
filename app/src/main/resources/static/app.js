@@ -1,19 +1,32 @@
-// app/src/main/resources/static/app.js — Weekend PWA client (UI v4; companion and Tune panel in companion.js). No third-party scripts; talks only to this origin.
-// Model output, agent messages and stored text are always rendered with textContent, never as HTML.
+// app/src/main/resources/static/app.js — Weekend PWA client (UI v5: landing, features, images, art; helmet + Customise in companion.js). No third-party scripts; talks only to this origin.
+// Model output, messages and stored text are always rendered with textContent, never as HTML.
 "use strict";
 
 const TZ = "Asia/Kolkata";
 const USD_TO_INR = 96.12; // display-only estimate; same FX as the project tracker (2026-10-02)
 const DELETE_PHRASE = "DELETE ALL MY DATA";
-const VIEWS = ["home", "chat", "agents", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings", "folder"];
+const VIEWS = ["home", "feature", "chat", "day", "tasks", "reminders", "approvals", "payments", "messages", "notifications", "memories", "settings", "folder"];
 const KINDS = { FACT: ["Fact", "accent"], PREFERENCE: ["Preference", ""], TASK: ["Task", ""] };
 const FOLDER_ICONS = ["folder", "home", "work", "money", "health", "travel", "code", "cart", "star", "book"];
 const NOTE_ICONS = { REMINDER: "bell", TASK: "task", APPROVAL: "approve", PAYMENT: "card", MESSAGE: "mail", SYSTEM: "sparkle" };
 
 const state = {
   conversationId: null, costUsd: 0, memories: [], memoryFilter: "all", info: null,
-  catalog: { agents: [], tools: [], remoteAllowed: false }, agentId: "weekend",
+  features: [], modes: [], featureId: "optimal", me: null, attachments: [], view: null,
   folders: [], taskFilter: "OPEN", folderId: null, logoSrc: "logo.svg",
+};
+const FEATURE_EXAMPLES = {
+  optimal: ["What should I focus on today?", "calculate 18% GST on 42,500", "Remind me to renew the passport"],
+  hard: ["solve x^3 - 6x^2 + 11x - 6 = 0", "calculate (1 + 0.07)^30 * 250000", "stats 12 15 9 22 17 31"],
+  smooth: ["Plan a relaxed Sunday for me", "Tell me something fun about Bengaluru", "Remember that I like filter coffee"],
+  focused: ["Summarise my open tasks", "list my tasks", "calculate 3840 / 2160"],
+  research: ["search compound interest", "Compare Cloud Run and GKE Autopilot for a small API", "search Indian Standard Time"],
+  coding: ["Write a Python script that rotates log files", "Review this Terraform for drift risks", "calculate 2^16"],
+  financial: ["my payments", "calculate 25000 * 12 * 1.07", "stats 2784 1840.5 25000"],
+  designing: ["draw a clean dashboard wireframe", "Review the screenshot I attach for accessibility", "Suggest a colour palette for a calm app"],
+  drawing: ["draw a sunset over the Western Ghats", "draw a night sky over a quiet lake", "paint misty mountains at dawn"],
+  image: ["What is in this picture?", "Read the text in this screenshot", "draw this scene at night"],
+  notes: ["notes weekly review", "save note Groceries: milk, eggs, filter coffee", "Turn my notes into tasks"],
 };
 const $ = (id) => document.getElementById(id);
 
@@ -201,8 +214,7 @@ function fillFolderSelects() {
   });
 }
 
-async function loadHome() {
-  $("greeting").textContent = greeting();
+async function loadDay() {
   $("today").textContent = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: TZ }).format(new Date()) + " · IST";
   const h = await refreshCounts();
   if (!h) return;
@@ -257,7 +269,7 @@ async function folderSheet(title, folder) {
 async function newFolder() {
   const f = await folderSheet("New folder");
   if (!f) return;
-  try { await post("/api/folders", f); toast("Folder created"); loadHome(); } catch (e) { toast(e.message, "error"); }
+  try { await post("/api/folders", f); toast("Folder created"); loadDay(); } catch (e) { toast(e.message, "error"); }
 }
 
 // ---------- folder view ----------
@@ -457,137 +469,243 @@ async function loadNotifications() {
   ])) : [empty("You're all caught up.")]));
 }
 
-// ---------- agents ----------
-function activeAgent() {
-  return state.catalog.agents.find((a) => a.id === state.agentId) || state.catalog.agents[0];
+// ---------- features (one agent, many behaviours) ----------
+function feature(id) {
+  return state.features.find((f) => f.id === id) || state.features[0];
 }
 
-function setAgent(id) {
-  state.agentId = id;
-  try { localStorage.setItem("weekend.agent", id); } catch { /* per-device convenience only */ }
-  $("agent-select").value = id;
-  const a = activeAgent();
-  if (a) $("chat-sub").textContent = (a.id === "weekend" ? "Weekend" : a.name) + " answers · write actions always wait for your yes.";
-  document.querySelectorAll(".agent").forEach((c) => c.classList.toggle("active", c.dataset.id === id));
-  if (typeof Companion !== "undefined") Companion.sync();
+async function loadFeatures() {
+  const cat = await api("/api/features");
+  state.features = cat.features;
+  state.modes = cat.modes;
+  if (!state.features.some((f) => f.id === state.featureId)) state.featureId = "optimal";
+  renderFeatureMenu();
+  setFeature(state.featureId, false);
+  return cat;
 }
 
-function conditionChips(a) {
-  if (a.kind === "REMOTE") return [tag(a.endpointHost || "remote", "", "globe"), tag("Every message waits for your yes", "accent", "shield")];
-  if (a.kind === "BUILTIN") return [tag("All tools", "", "tool"), tag("Writes wait for your yes", "", "shield")];
-  const c = a.conditions;
-  const chips = [tag(c.allowedTools === null ? "All tools" : c.allowedTools.length ? "Tools: " + c.allowedTools.join(", ") : "No tools", "", "tool")];
-  if (c.confirmAllTools) chips.push(tag("Every action waits for your yes", "accent", "shield"));
-  if (c.thinkHarder) chips.push(tag("Thinks harder", "", "sparkle"));
-  chips.push(tag("Max " + c.maxToolSteps + " steps"));
-  return chips;
+function featureIcon(f, cls = "f-ic") {
+  return el("span", { class: cls + " fi-" + f.id }, icon(f.icon));
 }
 
-function agentCard(a) {
-  const avatar = a.kind === "BUILTIN" ? el("img", { src: state.logoSrc, alt: "" }) : icon(a.kind === "REMOTE" ? "link" : "agent");
-  const kind = { BUILTIN: "Built in", CUSTOM: "Custom", REMOTE: "Connected" }[a.kind];
-  const actions = [];
-  actions.push(a.id === state.agentId ? button("In use", null, "btn sm", "check") : button("Use in chat", () => { setAgent(a.id); location.hash = "chat"; }, "btn primary sm", "chat"));
-  if (a.instructionsChars) actions.push(button("Instructions", () => showInstructions(a), "btn ghost sm", "file"));
-  if (a.kind === "CUSTOM") actions.push(button("Conditions", () => editConditions(a), "btn ghost sm", "settings"));
-  if (a.kind === "REMOTE") actions.push(button("Test", async () => {
-    try { const r = await post("/api/agents/" + encodeURIComponent(a.id) + "/test"); toast(r.healthy ? a.name + " is reachable" : a.name + " did not answer", r.healthy ? "" : "error"); } catch (e) { toast(e.message, "error"); }
-  }, "btn ghost sm", "link"));
-  if (a.editable) actions.push(iconButton("trash", "Delete agent", async () => {
-    if (!(await confirmDialog("Delete " + a.name + "?", a.kind === "REMOTE" ? "Weekend disconnects it and its token stops working." : "Its instructions are deleted."))) return;
-    try { await del("/api/agents/" + encodeURIComponent(a.id)); if (state.agentId === a.id) setAgent("weekend"); toast("Agent deleted"); loadAgents(); } catch (e) { toast(e.message, "error"); }
-  }, "danger"));
-  const source = a.instructionsSource && a.kind === "CUSTOM"
-    ? el("div", { class: "source" }, [icon("file", "ic sm"), a.instructionsSource + (a.instructionsTitle ? " · " + a.instructionsTitle : "") + " · " + a.instructionsLines + (a.instructionsLines === 1 ? " line" : " lines")]) : null;
-  const leaves = a.dataLeavesIndia && a.kind !== "REMOTE" ? el("p", { class: "flag" }, [icon("globe", "ic sm"), el("span", { text: "Prompts are processed outside India." })]) : null;
-  return el("li", { class: "agent" + (a.id === state.agentId ? " active" : ""), "data-id": a.id }, [
-    el("div", { class: "top" }, [el("span", { class: "avatar" }, avatar), el("div", {}, [el("h3", { text: a.name }), tag(kind, a.kind === "BUILTIN" ? "accent" : "")])]),
-    a.description ? el("p", { class: "desc", text: a.description }) : null,
-    a.kind !== "REMOTE" ? el("div", { class: "conds" }, [
-      tag((({ FUNNY: "Funny", DISCIPLINED: "Disciplined", WORK: "Work", BROWSE: "Browse" })[a.persona.mode] || "Custom") + " mode", "accent", "sparkle"),
-      tag(["", "Eco", "Balanced", "Standard", "High", "Max"][a.persona.efficiency] + " efficiency" + (a.focusMode ? " · focus" : ""), a.focusMode ? "accent" : "", "gauge"),
-      tag("Mood: " + a.mood.toLowerCase(), "", "smile"),
-    ]) : null,
-    el("div", { class: "conds" }, conditionChips(a)),
-    source, leaves,
-    el("div", { class: "actions" }, actions),
+function featureCard(f, i) {
+  const off = f.capabilities.filter((c) => !c.available).length;
+  return el("a", { class: "feature-card fi-" + f.id, href: "#feature/" + f.id, style: "--i:" + i, "data-feature": f.id }, [
+    featureIcon(f),
+    el("strong", { text: f.name }),
+    el("span", { class: "fc-tag", text: f.tagline }),
+    el("span", { class: "fc-foot" }, [
+      el("small", { text: f.capabilities.length + (f.capabilities.length === 1 ? " plugin" : " plugins") + (off ? " · " + off + " off" : "") }),
+      f.focusMode ? tag("focus", "accent", "gauge") : null,
+    ]),
   ]);
 }
 
-async function loadAgents() {
-  state.catalog = await api("/api/agents");
-  if (!state.catalog.agents.some((a) => a.id === state.agentId)) state.agentId = "weekend";
-  $("agent-select").replaceChildren(...state.catalog.agents.map((a) => el("option", { value: a.id, text: a.name })));
-  $("agent-list").replaceChildren(...state.catalog.agents.map(agentCard));
-  setAgent(state.agentId);
-  conditionsEditor($("custom-conditions"), null);
-  $("remote-off").hidden = state.catalog.remoteAllowed;
-  $("remote-form").querySelectorAll("input, button").forEach((x) => (x.disabled = !state.catalog.remoteAllowed));
-  if (typeof Tune !== "undefined") Tune.render();
+async function loadHome() {
+  const [me] = await Promise.all([api("/api/me").catch(() => null), state.features.length ? null : loadFeatures()]);
+  state.me = me;
+  const name = me && me.name ? me.name : null;
+  typeOut($("greeting"), name ? "Hi " + name + "." : greeting() + ".");
+  $("brand-sub").textContent = name ? name + "'s assistant" : "Your private assistant";
+  const about = $("about");
+  about.replaceChildren(...(me ? me.highlights.map((h, i) => el("li", { style: "--i:" + i, text: h })) : []));
+  $("features-everyday").replaceChildren(...state.features.filter((f) => f.group === "EVERYDAY").map(featureCard));
+  $("features-workspace").replaceChildren(...state.features.filter((f) => f.group === "WORKSPACE").map((f, i) => featureCard(f, i + 4)));
+  const h = await refreshCounts();
+  if (h) {
+    const c = h.counts;
+    $("day-summary").textContent = c.tasks + " open tasks · " + c.reminders + " reminders · " + c.approvals + " to approve";
+  }
+  if (typeof Companion !== "undefined") Companion.hero();
 }
 
-/** Fills a fieldset with condition controls; cond null = defaults (all tools). */
-function conditionsEditor(box, cond) {
-  const c = cond || { allowedTools: null, confirmAllTools: false, thinkHarder: false, maxToolSteps: 5 };
-  box.replaceChildren(el("legend", { text: "Conditions" }),
-    el("div", { class: "tool-list" }, state.catalog.tools.map((t) => el("label", {}, [
-      el("input", { type: "checkbox", value: t, "data-tool": "", checked: c.allowedTools === null || c.allowedTools.includes(t) }), t]))),
-    el("label", {}, [el("input", { type: "checkbox", "data-confirm": "", checked: c.confirmAllTools }), "Every action waits for my yes"]),
-    el("label", {}, [el("input", { type: "checkbox", "data-think": "", checked: c.thinkHarder }), "Always think harder (stronger model, costs more)"]),
-    el("label", {}, ["Max tool steps", el("input", { type: "number", min: "0", max: "10", value: String(c.maxToolSteps), "data-steps": "" })]));
+/** Types the greeting letter by letter (instant when animations are off). */
+function typeOut(node, text) {
+  clearInterval(typeOut.timer);
+  if (!motionOn()) { node.textContent = text; return; }
+  node.textContent = "";
+  let i = 0;
+  typeOut.timer = setInterval(() => {
+    node.textContent = text.slice(0, ++i);
+    if (i >= text.length) clearInterval(typeOut.timer);
+  }, 45);
 }
 
-function readConditions(box) {
-  const tools = [...box.querySelectorAll("[data-tool]")];
-  const picked = tools.filter((x) => x.checked).map((x) => x.value);
-  return {
-    allowedTools: picked.length === tools.length ? null : picked,
-    confirmAllTools: box.querySelector("[data-confirm]").checked,
-    thinkHarder: box.querySelector("[data-think]").checked,
-    maxToolSteps: Math.max(0, Math.min(10, Number(box.querySelector("[data-steps]").value) || 0)),
-  };
+async function openFeature(id) {
+  if (!state.features.length) await loadFeatures();
+  const f = state.features.find((x) => x.id === id);
+  if (!f) { location.hash = "home"; return; }
+  state.pageFeature = f.id;
+  $("f-icon").replaceChildren(featureIcon(f, "f-ic big"));
+  $("f-group").textContent = f.group === "EVERYDAY" ? "How I think" : "Workspace";
+  $("f-name").textContent = f.name;
+  $("f-tagline").textContent = f.tagline;
+  $("f-desc").textContent = f.description;
+  $("f-examples").replaceChildren(...(FEATURE_EXAMPLES[f.id] || []).map((p, i) => el("button", {
+    class: "chip example", type: "button", style: "--i:" + i, onclick: () => { setFeature(f.id); location.hash = "chat"; setTimeout(() => send(p), 350); },
+  }, [icon("arrow", "ic sm"), p])));
+  $("f-caps").replaceChildren(...f.capabilities.map((c) => el("li", { class: "cap" + (c.available ? "" : " off") }, [
+    el("span", { class: "cap-dot" }),
+    el("div", {}, [el("strong", { text: c.name }), el("small", { text: c.available ? c.description : c.reason })]),
+    tag(c.kind === "CONNECTOR" ? "Connector" : "Plugin", c.kind === "CONNECTOR" ? "accent" : ""),
+  ])));
+  $("f-rules").replaceChildren(...f.guidelines.map((g) => el("li", { text: g })));
+  if (typeof Tune !== "undefined") Tune.open(f);
 }
 
-async function showInstructions(a) {
-  try {
-    const r = await api("/api/agents/" + encodeURIComponent(a.id) + "/instructions");
-    await sheet(a.name + " · instructions", [el("p", { text: (a.instructionsSource || "") + " · added after Weekend's safety rules, which always win." }), el("pre", { text: r.text })]);
-  } catch (e) { toast(e.message, "error"); }
+function setFeature(id, sync = true) {
+  const f = feature(id);
+  if (!f) return;
+  state.featureId = f.id;
+  try { localStorage.setItem("weekend.feature", f.id); } catch { /* per-device convenience only */ }
+  $("h-chat").textContent = f.name;
+  $("pill-tagline").textContent = f.tagline;
+  $("pill-icon").replaceChildren(featureIcon(f, "f-ic sm"));
+  $("chat-hello").textContent = f.name + ": " + f.tagline;
+  $("chat-intro").textContent = f.description;
+  $("suggestions").replaceChildren(...(FEATURE_EXAMPLES[f.id] || []).map((p) => el("button", { class: "chip", type: "button", onclick: () => send(p) },
+    [icon("sparkle", "ic sm"), p])));
+  $("attach").hidden = !f.acceptsImages;
+  if (!f.acceptsImages) clearAttachments();
+  document.querySelectorAll("#feature-menu [data-id]").forEach((li) => li.setAttribute("aria-selected", String(li.dataset.id === f.id)));
+  if (sync && typeof Companion !== "undefined") Companion.sync();
 }
 
-async function editConditions(a) {
-  const box = el("fieldset", { class: "conditions" });
-  conditionsEditor(box, a.conditions);
-  if (!(await sheet(a.name + " · conditions", [box], "Save"))) return;
-  try { await put("/api/agents/" + encodeURIComponent(a.id) + "/conditions", readConditions(box)); toast("Conditions saved"); loadAgents(); } catch (e) { toast(e.message, "error"); }
+function renderFeatureMenu() {
+  $("feature-menu").replaceChildren(...state.features.map((f) => el("li", {
+    role: "option", "data-id": f.id, "aria-selected": String(f.id === state.featureId), tabindex: "0",
+    onclick: () => { setFeature(f.id); toggleMenu(false); },
+    onkeydown: (e) => { if (e.key === "Enter") { setFeature(f.id); toggleMenu(false); } },
+  }, [featureIcon(f, "f-ic sm"), el("span", {}, [el("strong", { text: f.name }), el("small", { text: f.tagline })])])));
 }
 
-async function createCustom(event) {
-  event.preventDefault();
-  try {
-    const a = await post("/api/agents/custom", { name: $("custom-name").value, description: $("custom-desc").value || null,
-      instructions: $("custom-instructions").value, conditions: readConditions($("custom-conditions")) });
-    event.target.reset();
-    toast(a.name + " created");
-    await loadAgents();
-  } catch (e) { toast(e.message, "error"); }
+function toggleMenu(open) {
+  const menu = $("feature-menu");
+  const show = open === undefined ? menu.hidden : open;
+  menu.hidden = !show;
+  $("feature-pill").setAttribute("aria-expanded", String(show));
 }
 
-async function connectRemote(event) {
-  event.preventDefault();
-  try {
-    const r = await post("/api/agents/remote", { name: $("remote-name").value, endpoint: $("remote-endpoint").value, description: $("remote-desc").value || null });
-    event.target.reset();
-    await loadAgents();
-    const code = el("code", { text: r.inboundToken });
-    await sheet("Connected " + r.agent.name, [
-      el("p", { text: "Give this token to the other agent so it can message you. Weekend keeps only a hash; this is the only time you will see it." }),
-      el("div", { class: "token-box" }, [code, button("Copy", async () => {
-        try { await navigator.clipboard.writeText(r.inboundToken); toast("Token copied"); } catch { toast("Copy not allowed here", "error"); }
-      }, "btn", "copy")]),
-      el("p", { text: "It sends: POST " + location.origin + "/agent-inbox with header Authorization: Bearer <token> and JSON {\"subject\", \"body\"}." }),
-    ]);
-  } catch (e) { toast(e.message, "error"); }
+// ---------- images and art ----------
+const MAX_SIDE = 1568; // larger images are scaled down before upload (Claude's recommended size; fewer tokens)
+
+function clearAttachments() {
+  state.attachments = [];
+  renderThumbs();
+}
+
+function renderThumbs() {
+  const box = $("thumbs");
+  box.hidden = !state.attachments.length;
+  box.replaceChildren(...state.attachments.map((a, i) => el("span", { class: "thumb" }, [
+    el("img", { src: a, alt: "Attached image " + (i + 1) }),
+    el("button", { type: "button", class: "thumb-x", "aria-label": "Remove image " + (i + 1), onclick: () => { state.attachments.splice(i, 1); renderThumbs(); } }, icon("x", "ic sm")),
+  ])));
+}
+
+/** Reads image files, scales big ones down, keeps at most 4 (5 MB each server-side). */
+async function addFiles(files) {
+  for (const file of [...files]) {
+    if (state.attachments.length >= 4) { toast("At most 4 images per message", "error"); break; }
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) { toast(file.name + ": use PNG, JPEG, WebP or GIF", "error"); continue; }
+    try { state.attachments.push(await shrink(file)); } catch { toast(file.name + " could not be read", "error"); }
+  }
+  renderThumbs();
+}
+
+function shrink(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const url = reader.result;
+      if (file.type === "image/gif") { resolve(url); return; }
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        if (scale === 1) { resolve(url); return; }
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.naturalWidth * scale);
+        c.height = Math.round(img.naturalHeight * scale);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", 0.9));
+      };
+      img.src = url;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Splits a reply into text and ```svg blocks; svg blocks become artwork cards. */
+function replyNodes(text) {
+  const parts = [];
+  const re = /```svg\s*([\s\S]*?)```/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push(el("div", { class: "text", text: text.slice(last, m.index).trim() }));
+    parts.push(artCard(m[1]));
+    last = re.lastIndex;
+  }
+  const rest = text.slice(last).trim();
+  if (rest || !parts.length) parts.push(el("div", { class: "text", text: rest }));
+  return parts.filter((n) => n.classList.contains("art") || n.textContent);
+}
+
+function artCard(svgText) {
+  const svg = typeof cleanSvg === "function" ? cleanSvg(svgText) : null;
+  if (!svg) return el("div", { class: "text", text: "(The drawing could not be displayed safely.)" });
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Artwork");
+  const fig = el("figure", { class: "art" }, [el("div", { class: "art-frame" }, svg), el("figcaption", { class: "row" }, [
+    button("4K PNG", () => WeekendArt.downloadPng(svg), "btn primary sm", "download"),
+    button("SVG", () => WeekendArt.downloadSvg(svg), "btn sm", "download"),
+    button("Full screen", () => { $("art-full-body").replaceChildren(svg.cloneNode(true)); $("art-full").showModal(); }, "btn ghost sm", "expand"),
+  ])]);
+  return fig;
+}
+
+/** 4K export: rasterises the sanitised SVG on a canvas 3840 px wide (height from the viewBox). */
+const WeekendArt = {
+  size(svg) {
+    const vb = (svg.getAttribute("viewBox") || "0 0 3840 2160").split(/[\s,]+/).map(Number);
+    const ratio = vb[3] > 0 && vb[2] > 0 ? vb[3] / vb[2] : 9 / 16;
+    return { width: 3840, height: Math.round(3840 * ratio) };
+  },
+  async toCanvas(svg) {
+    const { width, height } = this.size(svg);
+    const copy = svg.cloneNode(true);
+    copy.setAttribute("width", width);
+    copy.setAttribute("height", height);
+    const blob = new Blob([new XMLSerializer().serializeToString(copy)], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = url; });
+      const c = document.createElement("canvas");
+      c.width = width;
+      c.height = height;
+      c.getContext("2d").drawImage(img, 0, 0, width, height);
+      return c;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+  async downloadPng(svg) {
+    try {
+      const c = await this.toCanvas(svg);
+      c.toBlob((b) => { save(b, "weekend-art-" + c.width + "x" + c.height + ".png"); toast("4K PNG saved (" + c.width + "×" + c.height + ")"); }, "image/png");
+    } catch { toast("Could not render the PNG", "error"); }
+  },
+  downloadSvg(svg) {
+    save(new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" }), "weekend-art.svg");
+  },
+};
+
+function save(blob, name) {
+  const url = URL.createObjectURL(blob);
+  el("a", { href: url, download: name }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ---------- chat ----------
@@ -605,15 +723,16 @@ function messageRow(role, children) {
   return li;
 }
 
-function addUser(text) {
-  messageRow("user", el("div", { class: "text", text }));
+function addUser(text, images = []) {
+  messageRow("user", [images.length ? el("div", { class: "msg-images" }, images.map((u, i) => el("img", { src: u, alt: "Attached image " + (i + 1) }))) : null,
+    el("div", { class: "text", text })]);
 }
 
 function addAssistant(text, metaTags = []) {
   const copy = iconButton("copy", "Copy reply", async () => {
     try { await navigator.clipboard.writeText(text); toast("Copied"); } catch { toast("Copy not allowed here", "error"); }
   });
-  return messageRow("assistant", [el("div", { class: "text", text }), el("div", { class: "meta" }, [...metaTags, copy])]);
+  return messageRow("assistant", [...replyNodes(text), el("div", { class: "meta" }, [...metaTags, copy])]);
 }
 
 function pendingCard(p) {
@@ -649,16 +768,20 @@ async function send(text) {
   const input = $("input");
   input.value = "";
   autosize();
-  addUser(text);
+  const images = state.attachments.slice();
+  clearAttachments();
+  addUser(text, images);
   const typing = messageRow("assistant", el("div", { class: "typing", "aria-label": "Weekend is thinking" }, [el("i"), el("i"), el("i")]));
   $("send").disabled = true;
   try {
-    const r = await post("/api/chat", { conversationId: state.conversationId, message: text, thinkHarder: $("think").checked, agentId: state.agentId });
+    const r = await post("/api/chat", { conversationId: state.conversationId, message: text, thinkHarder: $("think").checked,
+      featureId: state.featureId, images });
     state.conversationId = r.conversationId;
     typing.remove();
-    const tags = [];
-    if (r.agentId && r.agentId !== "weekend") tags.push(tag(r.agentName, "accent", "agent"));
-    tags.push(tag(r.model, r.agentId === "weekend" ? "accent" : "", "sparkle"));
+    const f = feature(r.featureId);
+    const tags = [el("span", { class: "tag accent" }, [f ? featureIcon(f, "f-ic xs") : null, r.featureName])];
+    tags.push(tag(r.model, "", "sparkle"));
+    if (images.length) tags.push(tag(images.length + (images.length === 1 ? " image" : " images"), "", "eye"));
     r.toolsUsed.forEach((t) => tags.push(tag(t, "", "tool")));
     if (r.memorySaved) tags.push(tag("memory saved", "", "memory"));
     const cost = Number(r.costUsd || 0);
@@ -784,7 +907,7 @@ async function deleteAll(event) {
     $("delete-phrase").value = "";
     $("delete-btn").disabled = true;
     newChat();
-    setAgent("weekend");
+    loadFeatures().catch(() => {});
     refreshCounts();
     toast("All data deleted");
   } catch (e) {
@@ -792,40 +915,68 @@ async function deleteAll(event) {
   }
 }
 
-// ---------- navigation ----------
+// ---------- navigation with transitions ----------
+function motionOn() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
+  try { return localStorage.getItem("weekend.motion") !== "off"; } catch { return true; }
+}
+
 function showView(hash) {
   let [name, arg] = hash.split("/");
-  if (!VIEWS.includes(name) || (name === "folder" && !arg)) name = "home";
-  const navName = name === "folder" ? "home" : name;
+  if (!VIEWS.includes(name) || ((name === "folder" || name === "feature") && !arg)) name = "home";
+  const navName = name === "folder" ? "day" : name === "feature" ? "home" : name;
   document.querySelectorAll(".nav button").forEach((b) => (b.dataset.view === navName ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
-  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + name));
-  const loaders = {
-    home: loadHome, agents: loadAgents, tasks: loadTasks, reminders: loadReminders, approvals: loadApprovals,
-    payments: loadPayments, messages: loadMessages, notifications: loadNotifications, memories: loadMemories,
-    settings: loadInfo, folder: () => loadFolder(arg),
+  const next = $("view-" + name);
+  const prev = state.view && state.view !== next ? state.view : null;
+  const swap = () => {
+    document.querySelectorAll(".view").forEach((v) => (v.hidden = v !== next));
+    next.classList.remove("entering");
+    if (motionOn()) { void next.offsetWidth; next.classList.add("entering"); }
+    next.querySelector(".view-body")?.scrollTo?.(0, 0);
+    if (typeof Companion !== "undefined") Companion.sync();
   };
-  if (loaders[name]) loaders[name]().catch((e) => { toast(e.message, "error"); if (name === "folder") location.hash = "home"; });
-  if (name === "chat") $("input").focus({ preventScroll: true });
+  if (prev && motionOn()) {
+    prev.classList.add("leaving");
+    setTimeout(() => { prev.classList.remove("leaving"); swap(); }, 170);
+  } else {
+    swap();
+  }
+  state.view = next;
+  const loaders = {
+    home: loadHome, day: loadDay, tasks: loadTasks, reminders: loadReminders, approvals: loadApprovals,
+    payments: loadPayments, messages: loadMessages, notifications: loadNotifications, memories: loadMemories,
+    settings: loadInfo, folder: () => loadFolder(arg), feature: () => openFeature(arg),
+  };
+  if (loaders[name]) loaders[name]().catch((e) => { toast(e.message, "error"); if (name === "folder") location.hash = "day"; });
+  if (name === "chat") setTimeout(() => $("input").focus({ preventScroll: true }), 200);
+  toggleMenu(false);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  try { state.agentId = localStorage.getItem("weekend.agent") || "weekend"; } catch { /* default agent */ }
+  try { state.featureId = localStorage.getItem("weekend.feature") || "optimal"; } catch { /* default feature */ }
   $("composer").addEventListener("submit", (e) => { e.preventDefault(); send($("input").value); });
   $("input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("input").value); }
   });
   $("input").addEventListener("input", autosize);
-  document.querySelectorAll("#suggestions .chip").forEach((c) => c.addEventListener("click", () => send(c.dataset.prompt)));
   $("new-chat").addEventListener("click", newChat);
-  $("agent-select").addEventListener("change", (e) => setAgent(e.target.value));
-  $("quick-ask").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const q = $("quick-input").value.trim();
-    if (!q) return;
-    $("quick-input").value = "";
-    location.hash = "chat";
-    send(q);
+  $("feature-pill").addEventListener("click", () => toggleMenu());
+  document.addEventListener("click", (e) => { if (!e.target.closest(".chat-title")) toggleMenu(false); });
+  $("f-start").addEventListener("click", () => { setFeature(state.pageFeature); newChat(); location.hash = "chat"; });
+  $("attach").addEventListener("click", () => $("file").click());
+  $("file").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+  $("composer").addEventListener("dragover", (e) => { if (feature(state.featureId)?.acceptsImages) e.preventDefault(); });
+  $("composer").addEventListener("drop", (e) => { if (feature(state.featureId)?.acceptsImages) { e.preventDefault(); addFiles(e.dataTransfer.files); } });
+  $("input").addEventListener("paste", (e) => {
+    const imgs = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+    if (imgs.length && feature(state.featureId)?.acceptsImages) { e.preventDefault(); addFiles(imgs); }
   });
+  try { $("motion-toggle").checked = localStorage.getItem("weekend.motion") !== "off"; } catch { /* default on */ }
+  $("motion-toggle").addEventListener("change", (e) => {
+    try { localStorage.setItem("weekend.motion", e.target.checked ? "on" : "off"); } catch { /* per-device only */ }
+    document.documentElement.classList.toggle("no-motion", !e.target.checked);
+  });
+  document.documentElement.classList.toggle("no-motion", !motionOn());
 
   $("new-folder").addEventListener("click", newFolder);
   $("folder-rename").addEventListener("click", async () => {
@@ -836,7 +987,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("folder-delete").addEventListener("click", async () => {
     if (!(await confirmDialog("Delete this folder?", "Its tasks and reminders are kept; they just won't be in a folder."))) return;
-    try { await del("/api/folders/" + encodeURIComponent(state.folderId)); toast("Folder deleted"); location.hash = "home"; } catch (e) { toast(e.message, "error"); }
+    try { await del("/api/folders/" + encodeURIComponent(state.folderId)); toast("Folder deleted"); location.hash = "day"; } catch (e) { toast(e.message, "error"); }
   });
   $("folder-task-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -866,8 +1017,6 @@ document.addEventListener("DOMContentLoaded", () => {
   $("read-all").addEventListener("click", async () => {
     try { await post("/api/notifications/read-all"); loadNotifications(); refreshCounts(); } catch (e) { toast(e.message, "error"); }
   });
-  $("custom-form").addEventListener("submit", createCustom);
-  $("remote-form").addEventListener("submit", connectRemote);
 
   $("memory-search").addEventListener("input", renderMemories);
   document.querySelectorAll("#memory-filter button").forEach((b) => b.addEventListener("click", () => {
@@ -899,7 +1048,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
   showSessionState();
   loadInfo();
-  loadAgents().catch(() => { /* not signed in yet */ });
+  loadFeatures().catch(() => { /* not signed in yet */ });
   showView(location.hash.slice(1));
   setInterval(() => { checkHealth(); refreshCounts(); }, 30000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

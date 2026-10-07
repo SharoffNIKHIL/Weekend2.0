@@ -41,15 +41,13 @@ class RetentionAndDataTest {
     }
 
     @Test
-    void exportAndDeleteAllCoverTheWorkspaceAndOwnerCreatedAgents() {
-        Harness h = new Harness(new ScriptedLlmProvider(), com.weekend.assistant.TestFixtures.props(
-                com.weekend.assistant.TestFixtures.agents(java.util.List.of("agents.example.com"), java.util.List.of())));
+    void exportAndDeleteAllCoverTheWorkspaceAndFeatureSettings() {
+        Harness h = new Harness(new ScriptedLlmProvider());
         String folder = h.folders.create("Work", "work").id();
         h.tasks.create("Task", null, folder, null, null, "owner");
         h.payments.request("Rent", java.math.BigDecimal.TEN, null, null, "owner");
         h.inbox.receive("system", "Weekend", "Hi", "Body");
-        h.agents.createCustom("Mine", null, "My own instructions", null);
-        var remote = h.agents.connectRemote("Helper", null, "https://agents.example.com");
+        h.features.updateInstructions("coding", "My own instructions");
 
         DataService.Export e = h.data.export("owner");
         assertThat(e.folders()).hasSize(1);
@@ -57,8 +55,8 @@ class RetentionAndDataTest {
         assertThat(e.payments()).hasSize(1);
         assertThat(e.inboxMessages()).hasSize(1);
         assertThat(e.notifications()).hasSize(2);
-        assertThat(e.agents()).hasSize(3).extracting(DataService.AgentExport::instructions).contains("My own instructions");
-        assertThat(e.toString()).doesNotContain(remote.agent().inboundTokenHash()).doesNotContain(remote.inboundToken());
+        assertThat(e.featureSettings()).containsOnlyKeys("coding");
+        assertThat(e.featureSettings().get("coding")).containsEntry("instructions", "My own instructions");
 
         assertThat(h.data.deleteAll(DataService.DELETE_CONFIRMATION)).isTrue();
         assertThat(h.folderRepo.findAll()).isEmpty();
@@ -66,7 +64,6 @@ class RetentionAndDataTest {
         assertThat(h.paymentRepo.findAll()).isEmpty();
         assertThat(h.inboxRepo.findAll()).isEmpty();
         assertThat(h.notificationRepo.findAll()).isEmpty();
-        assertThat(h.agents.all()).extracting("id").containsExactly("weekend");
-        assertThat(h.agents.authenticateInbound(remote.inboundToken())).isEmpty();   // connection revoked
+        assertThat(h.features.overrides()).isEmpty();
     }
 }

@@ -12,5 +12,5 @@ public record ChatResult(
         PendingAction pendingConfirmation,
         BigDecimal costUsd,
         boolean memorySaved,
-        String agentId,
-        String agentName) {}
+        String featureId,
+        String featureName) {}

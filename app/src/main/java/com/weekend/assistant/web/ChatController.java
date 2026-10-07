@@ -2,6 +2,8 @@ package com.weekend.assistant.web;
 
 import com.weekend.assistant.agent.AgentService;
 import com.weekend.assistant.agent.ChatGuard;
+import com.weekend.assistant.agent.ChatImages;
+import com.weekend.assistant.port.LlmProvider.ImagePart;
 import com.weekend.assistant.agent.ChatResult;
 import com.weekend.assistant.agent.PendingAction;
 import jakarta.validation.Valid;
@@ -30,14 +32,16 @@ public class ChatController {
         this.guard = guard;
     }
 
+    /** {@code images}: up to 4 data URLs (PNG/JPEG/WebP/GIF, ≤ 5 MB each) for Claude to look at; never stored. */
     public record ChatRequest(String conversationId, @NotBlank @Size(max = 8000) String message, Boolean thinkHarder,
-            @Size(max = 64) String agentId) {}
+            @Size(max = 64) String featureId, @Size(max = 4) List<String> images) {}
 
     public record ConfirmRequest(boolean approved) {}
 
     @PostMapping("/chat")
     public ChatResult chat(@Valid @RequestBody ChatRequest req) {
-        return guard.run(() -> agent.chat(req.conversationId(), req.message(), Boolean.TRUE.equals(req.thinkHarder()), req.agentId()));
+        List<ImagePart> images = ChatImages.parse(req.images());
+        return guard.run(() -> agent.chat(req.conversationId(), req.message(), Boolean.TRUE.equals(req.thinkHarder()), req.featureId(), images));
     }
 
     @GetMapping("/pending")

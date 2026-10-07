@@ -50,6 +50,18 @@ class OwnerProfileTest {
     }
 
     @Test
+    void nameLineSetsTheGreetingNameAndIsNotAMemory() {
+        Harness h = new Harness(new ScriptedLlmProvider());
+        OwnerProfile profile = new OwnerProfile(h.memories, TestFixtures.props());
+        assertThat(profile.name()).isNull();
+        profile.importText("- name: Asha\n- fact: Lives in India\n");
+        assertThat(profile.name()).isEqualTo("Asha");
+        assertThat(h.memories.all()).extracting(Memory::text).containsExactly("Lives in India");
+        profile.importText("- name: " + "x".repeat(41));
+        assertThat(profile.name()).isEqualTo("Asha");                 // over-long names are ignored
+    }
+
+    @Test
     void missingOrUnsetFileIsFine() {
         Harness h = new Harness(new ScriptedLlmProvider());
         new OwnerProfile(h.memories, TestFixtures.props()).run(null);

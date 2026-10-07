@@ -35,18 +35,12 @@ weekend:
     audit-log: 730d
     notifications: 30d
     inbox-messages: 365d
-  agents:                                            # DESIGN §13 — other agents
-    allowed-hosts: ${WEEKEND_AGENT_ALLOWED_HOSTS:}   # comma list "host" or "host:port"; empty = no remote agents (security checkpoint to add one)
-    timeout: 20s
-    custom:
-      - id: project-agent
-        name: Project agent
-        description: Personal AI Agent project agent. Follows the owner's CLAUDE.md, drafts only, every action needs your yes.
-        instructions-file: ${WEEKEND_PROJECT_AGENT_INSTRUCTIONS:${project-agent-file:}}   # path to CLAUDE.md; read at start-up, never committed
-        allowed-tools: [current_time, memory_search, task_list, task_create, reminder_create, math_evaluate, math_solve, math_stats, web_search]
-        confirm-all-tools: true
-        think-harder: false
-        max-tool-steps: 5
+  notion:                                            # Notion connector (🔓 P7) — off until a token is set
+    token: ${WEEKEND_NOTION_TOKEN:}                  # Notion internal integration secret; Secret Manager / env only
+    base-url: https://api.notion.com
+    version: "2022-06-28"
+    parent-page-id: ${WEEKEND_NOTION_PARENT_PAGE:}   # page that new notes go under
+    timeout: 15s
   pressure:                                          # high-pressure handling
     max-concurrent-chats: ${WEEKEND_MAX_CONCURRENT_CHATS:4}
     queue-wait: 10s

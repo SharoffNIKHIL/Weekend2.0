@@ -58,18 +58,24 @@
     <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9.5h.01M15 9.5h.01"/></symbol>
     <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></symbol>
     <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-day" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></symbol>
   </svg>
 
   <div class="app">
     <aside class="sidebar">
-      <div class="brand">
+      <a class="brand" href="#home" aria-label="Weekend home">
         <img src="logo.svg" alt="" width="36" height="40" data-brand="logo">
-        <div><strong>Weekend</strong><span>Private assistant</span></div>
-      </div>
+        <div><strong>Weekend</strong><span id="brand-sub">Your private assistant</span></div>
+      </a>
       <nav class="nav" aria-label="Sections">
         <button data-view="home" aria-current="page"><svg class="ic"><use href="#i-home"/></svg><span>Home</span></button>
         <button data-view="chat"><svg class="ic"><use href="#i-chat"/></svg><span>Chat</span></button>
-        <button data-view="agents"><svg class="ic"><use href="#i-agent"/></svg><span>Agents</span></button>
+        <button data-view="day"><svg class="ic"><use href="#i-day"/></svg><span>Your day</span></button>
         <p class="nav-label">Organise</p>
         <button data-view="tasks" class="secondary"><svg class="ic"><use href="#i-task"/></svg><span>Tasks</span><b class="count" data-count="tasks" hidden></b></button>
         <button data-view="reminders" class="secondary"><svg class="ic"><use href="#i-bell"/></svg><span>Reminders</span><b class="count" data-count="reminders" hidden></b></button>
@@ -82,122 +88,73 @@
       </nav>
       <div class="side-foot">
         <div class="status" id="status"><i></i><span>Connecting…</span></div>
-        <p class="side-note"><svg class="ic sm"><use href="#i-lock"/></svg> Only you can sign in. Your data stays in your Google Cloud project.</p>
+        <p class="side-note"><svg class="ic sm"><use href="#i-lock"/></svg> Only you can sign in. Claude is the only AI model used.</p>
       </div>
     </aside>
 
     <main>
-      <!-- Home -->
-      <section class="view" id="view-home" aria-labelledby="h-home">
-        <div class="view-body home">
-          <div class="inner wide">
-            <header class="hero">
-              <img src="logo.svg" alt="" class="hero-logo" width="84" height="94" data-brand="logo">
-              <div class="hero-text">
-                <h1 id="h-home"><span id="greeting">Hello</span></h1>
-                <p class="sub" id="today"></p>
-              </div>
-              <form class="quick-ask" id="quick-ask" autocomplete="off">
-                <label class="sr-only" for="quick-input">Ask Weekend</label>
-                <input id="quick-input" placeholder="Ask Weekend anything…" maxlength="8000">
-                <button class="send" aria-label="Ask"><svg class="ic"><use href="#i-send"/></svg></button>
-              </form>
+      <!-- Landing -->
+      <section class="view landing" id="view-home" aria-labelledby="greeting">
+        <div class="view-body">
+          <div class="landing-inner">
+            <header class="landing-hero">
+              <div class="hero-helmet" id="hero-helmet" aria-hidden="true"></div>
+              <h1 class="hello"><span id="greeting">Hi.</span></h1>
+              <p class="ask" id="ask">What feature do you want to explore?</p>
+              <ul class="about" id="about" aria-label="About you"></ul>
             </header>
 
-            <h2 class="section-title">Pick a category</h2>
-            <div class="tiles" id="tiles">
-              <a class="tile" href="#reminders" data-tile="reminders"><span class="tile-ic"><svg class="ic"><use href="#i-bell"/></svg></span><b>0</b><span>Reminders</span><small>upcoming</small></a>
-              <a class="tile" href="#tasks" data-tile="tasks"><span class="tile-ic"><svg class="ic"><use href="#i-task"/></svg></span><b>0</b><span>Tasks</span><small>open</small></a>
-              <a class="tile" href="#approvals" data-tile="approvals"><span class="tile-ic"><svg class="ic"><use href="#i-approve"/></svg></span><b>0</b><span>Approvals</span><small>waiting for you</small></a>
-              <a class="tile" href="#payments" data-tile="payments"><span class="tile-ic"><svg class="ic"><use href="#i-card"/></svg></span><b>0</b><span>Payments</span><small>to approve or pay</small></a>
-              <a class="tile" href="#messages" data-tile="messages"><span class="tile-ic"><svg class="ic"><use href="#i-mail"/></svg></span><b>0</b><span>Messages</span><small>unread</small></a>
-              <a class="tile" href="#notifications" data-tile="notifications"><span class="tile-ic"><svg class="ic"><use href="#i-bell"/></svg></span><b>0</b><span>Notifications</span><small>unread</small></a>
-            </div>
+            <section class="feature-group" aria-labelledby="g-everyday">
+              <h2 id="g-everyday" class="section-title">How should I think?</h2>
+              <div class="feature-grid everyday" id="features-everyday" data-stagger></div>
+            </section>
+            <section class="feature-group" aria-labelledby="g-work">
+              <h2 id="g-work" class="section-title">What are we working on?</h2>
+              <div class="feature-grid" id="features-workspace" data-stagger></div>
+            </section>
 
-            <div class="section-head">
-              <h2 class="section-title">Folders</h2>
-              <button class="btn ghost sm" id="new-folder"><svg class="ic sm"><use href="#i-plus"/></svg>New folder</button>
-            </div>
-            <ul class="folders" id="folders"></ul>
-
-            <h2 class="section-title">Up next</h2>
-            <ul class="rows" id="up-next"></ul>
+            <a class="day-link" href="#day" id="day-link">
+              <svg class="ic"><use href="#i-day"/></svg>
+              <span><strong>Your day</strong><small id="day-summary">Tasks, reminders, approvals and payments</small></span>
+              <svg class="ic"><use href="#i-arrow"/></svg>
+            </a>
           </div>
         </div>
       </section>
 
-      <!-- Chat -->
-      <section class="view" id="view-chat" aria-labelledby="h-chat" hidden>
-        <header class="view-head">
-          <div>
-            <h1 id="h-chat">Chat</h1>
-            <p class="sub" id="chat-sub">Ask anything. Write actions always wait for your yes.</p>
-          </div>
-          <div class="head-actions">
-            <span class="cost-pill" id="cost-pill" title="Model cost in this tab" hidden></span>
-            <button class="btn ghost" id="new-chat"><svg class="ic"><use href="#i-plus"/></svg><span>New chat</span></button>
-          </div>
-        </header>
-        <div class="view-body" id="chat-scroll">
-          <div class="inner">
-            <div class="empty-chat" id="empty-chat">
-              <div class="hello-mark"><img src="logo.svg" alt="" width="64" height="72" data-brand="logo"></div>
-              <h2>How can I help?</h2>
-              <p>I can answer questions, remember things, add tasks and reminders, and talk to your other agents. Anything that changes data or leaves Weekend waits for your yes.</p>
-              <div class="chips" id="suggestions">
-                <button class="chip" data-prompt="What time is it?"><svg class="ic sm"><use href="#i-clock"/></svg>What time is it?</button>
-                <button class="chip" data-prompt="Add task review the Terraform plan"><svg class="ic sm"><use href="#i-task"/></svg>Add task review the Terraform plan</button>
-                <button class="chip" data-prompt="List my tasks"><svg class="ic sm"><use href="#i-search"/></svg>List my tasks</button>
-                <button class="chip" data-prompt="Remind me to rotate the staging key"><svg class="ic sm"><use href="#i-bell"/></svg>Remind me to rotate the staging key</button>
-              </div>
-            </div>
-            <ol id="messages" class="messages" aria-live="polite" aria-label="Conversation"></ol>
-          </div>
-        </div>
-        <footer class="composer-wrap">
-          <div class="inner">
-            <form id="composer" class="composer" autocomplete="off">
-              <label class="sr-only" for="input">Message</label>
-              <textarea id="input" rows="1" maxlength="8000" placeholder="Message Weekend…" required></textarea>
-              <div class="composer-bar">
-                <label class="agent-pick" title="Which agent answers">
-                  <svg class="ic sm"><use href="#i-agent"/></svg>
-                  <span class="sr-only">Agent</span>
-                  <select id="agent-select"></select>
-                </label>
-                <label class="eff-pick" title="Efficiency of the active agent (High and Max switch on focus mode)">
-                  <svg class="ic sm"><use href="#i-gauge"/></svg>
-                  <span class="sr-only">Efficiency</span>
-                  <input type="range" min="1" max="5" step="1" id="chat-efficiency" aria-label="Efficiency">
-                  <b id="chat-efficiency-label">Standard</b>
-                </label>
-                <label class="think" title="Route this message to the stronger model">
-                  <input type="checkbox" id="think">
-                  <span><svg class="ic sm"><use href="#i-sparkle"/></svg>Think harder</span>
-                </label>
-                <span class="kbd-hint">Enter to send · Shift+Enter for a new line</span>
-                <button type="submit" class="send" id="send" aria-label="Send"><svg class="ic"><use href="#i-send"/></svg></button>
-              </div>
-            </form>
-          </div>
-        </footer>
-      </section>
-
-      <!-- Agents -->
-      <section class="view" id="view-agents" aria-labelledby="h-agents" hidden>
-        <header class="view-head">
-          <div>
-            <h1 id="h-agents">Agents</h1>
-            <p class="sub">Pick who answers in Chat, give an agent your own instructions and conditions, or connect another agent.</p>
-          </div>
-        </header>
+      <!-- Feature page -->
+      <section class="view feature-page" id="view-feature" aria-labelledby="f-name" hidden>
         <div class="view-body">
           <div class="inner wide">
+            <a class="back" href="#home"><svg class="ic sm"><use href="#i-back"/></svg>All features</a>
+            <header class="f-hero" id="f-hero">
+              <span class="f-icon" id="f-icon"></span>
+              <div class="f-text">
+                <p class="f-group" id="f-group"></p>
+                <h1 id="f-name">Feature</h1>
+                <p class="f-tagline" id="f-tagline"></p>
+                <p class="f-desc" id="f-desc"></p>
+              </div>
+              <button class="btn primary big" id="f-start"><svg class="ic"><use href="#i-chat"/></svg>Start chat</button>
+            </header>
+            <div class="f-examples" id="f-examples" data-stagger></div>
+
+            <div class="f-grid" data-stagger>
+              <article class="card">
+                <h2><svg class="ic"><use href="#i-plug"/></svg>Plugins and connectors</h2>
+                <ul class="caps" id="f-caps"></ul>
+              </article>
+              <article class="card">
+                <h2><svg class="ic"><use href="#i-shield"/></svg>Guidelines</h2>
+                <ol class="rules" id="f-rules"></ol>
+              </article>
+            </div>
+
             <article class="card tune" id="tune">
               <div class="tune-head">
                 <div class="tune-preview" id="tune-preview" aria-hidden="true"></div>
                 <div class="tune-title">
-                  <h2><svg class="ic"><use href="#i-settings"/></svg>Tune <select id="tune-agent" aria-label="Agent to tune"></select></h2>
+                  <h2><svg class="ic"><use href="#i-settings"/></svg>Customise <span id="tune-name"></span></h2>
                   <p class="hint" id="tune-summary">Pick a mode, then fine-tune with the sliders.</p>
                 </div>
               </div>
@@ -227,42 +184,92 @@
                     <option value="WRITES_ONLY">Ask before changes only (web search pre-approved)</option>
                   </select></label>
               </div>
-              <p class="flag" id="web-off" hidden><svg class="ic sm"><use href="#i-lock"/></svg><span>Web search is switched off on this server, so Web and Wide act like Memory until a host is allowed (security checkpoint).</span></p>
-              <div class="row end"><button class="btn ghost" type="button" id="tune-reset">Reset to mode</button><button class="btn primary" type="button" id="tune-save"><svg class="ic sm"><use href="#i-check"/></svg>Save</button></div>
+              <label class="stack-label">My extra instructions for this feature
+                <textarea id="s-instructions" rows="3" maxlength="4000" placeholder="e.g. Use pytest and type hints. Keep answers under 200 words."></textarea></label>
+              <div class="row end"><button class="btn ghost" type="button" id="tune-reset">Reset to defaults</button><button class="btn primary" type="button" id="tune-save"><svg class="ic sm"><use href="#i-check"/></svg>Save</button></div>
             </article>
-
-            <ul class="agent-grid" id="agent-list"></ul>
-
-            <div class="two-col">
-              <article class="card">
-                <h2><svg class="ic"><use href="#i-file"/></svg>Create your own agent</h2>
-                <p class="hint">Your instructions are added after Weekend's safety rules, which always win.</p>
-                <form id="custom-form" class="stack">
-                  <label>Name<input id="custom-name" maxlength="60" required placeholder="e.g. Trip planner"></label>
-                  <label>Description<input id="custom-desc" maxlength="300" placeholder="Optional"></label>
-                  <label>Instructions<textarea id="custom-instructions" rows="5" maxlength="65536" required placeholder="How should this agent behave?"></textarea></label>
-                  <fieldset class="conditions" id="custom-conditions"></fieldset>
-                  <button class="btn primary" type="submit"><svg class="ic sm"><use href="#i-plus"/></svg>Create agent</button>
-                </form>
-              </article>
-
-              <article class="card">
-                <h2><svg class="ic"><use href="#i-link"/></svg>Connect another agent</h2>
-                <p class="hint">Weekend talks to other agents over HTTPS ("weekend-agent/1"). Every message you send them waits for your yes, and they get a token to message you back.</p>
-                <p class="flag" id="remote-off" hidden><svg class="ic sm"><use href="#i-lock"/></svg><span>Remote agents are switched off. Add the agent's host to <code>WEEKEND_AGENT_ALLOWED_HOSTS</code> after a security checkpoint.</span></p>
-                <form id="remote-form" class="stack">
-                  <label>Name<input id="remote-name" maxlength="60" required placeholder="e.g. Build bot"></label>
-                  <label>Endpoint URL<input id="remote-endpoint" type="url" maxlength="300" required placeholder="https://agent.example.com/weekend"></label>
-                  <label>Description<input id="remote-desc" maxlength="300" placeholder="Optional"></label>
-                  <button class="btn primary" type="submit" id="remote-submit"><svg class="ic sm"><use href="#i-link"/></svg>Connect</button>
-                </form>
-              </article>
-            </div>
           </div>
         </div>
       </section>
 
-      <!-- Tasks -->
+      <!-- Chat -->
+      <section class="view" id="view-chat" aria-labelledby="h-chat" hidden>
+        <header class="view-head">
+          <div class="chat-title">
+            <button class="feature-pill" id="feature-pill" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Change feature">
+              <span class="pill-ic" id="pill-icon"></span><span><b id="h-chat">Optimal</b><small id="pill-tagline"></small></span><svg class="ic sm"><use href="#i-back"/></svg>
+            </button>
+            <ul class="feature-menu" id="feature-menu" role="listbox" hidden></ul>
+          </div>
+          <div class="head-actions">
+            <span class="cost-pill" id="cost-pill" title="Model cost in this tab" hidden></span>
+            <button class="btn ghost" id="new-chat"><svg class="ic"><use href="#i-plus"/></svg><span>New chat</span></button>
+          </div>
+        </header>
+        <div class="view-body" id="chat-scroll">
+          <div class="inner">
+            <div class="empty-chat" id="empty-chat">
+              <div class="hello-mark"><img src="logo.svg" alt="" width="64" height="72" data-brand="logo"></div>
+              <h2 id="chat-hello">How can I help?</h2>
+              <p id="chat-intro">Write actions and anything that leaves Weekend wait for your yes.</p>
+              <div class="chips" id="suggestions"></div>
+            </div>
+            <ol id="messages" class="messages" aria-live="polite" aria-label="Conversation"></ol>
+          </div>
+        </div>
+        <footer class="composer-wrap">
+          <div class="inner">
+            <form id="composer" class="composer" autocomplete="off">
+              <div class="thumbs" id="thumbs" hidden></div>
+              <label class="sr-only" for="input">Message</label>
+              <textarea id="input" rows="1" maxlength="8000" placeholder="Message Weekend…" required></textarea>
+              <div class="composer-bar">
+                <button type="button" class="icon-btn attach" id="attach" aria-label="Attach images" title="Attach images (PNG, JPEG, WebP, GIF)"><svg class="ic"><use href="#i-clip"/></svg></button>
+                <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden aria-label="Choose images">
+                <label class="eff-pick" title="Efficiency for this feature (High and Max switch on focus mode)">
+                  <svg class="ic sm"><use href="#i-gauge"/></svg>
+                  <span class="sr-only">Efficiency</span>
+                  <input type="range" min="1" max="5" step="1" id="chat-efficiency" aria-label="Efficiency">
+                  <b id="chat-efficiency-label">Standard</b>
+                </label>
+                <label class="think" title="Route this message to the stronger model">
+                  <input type="checkbox" id="think">
+                  <span><svg class="ic sm"><use href="#i-sparkle"/></svg>Think harder</span>
+                </label>
+                <span class="kbd-hint">Enter to send · Shift+Enter for a new line</span>
+                <button type="submit" class="send" id="send" aria-label="Send"><svg class="ic"><use href="#i-send"/></svg></button>
+              </div>
+            </form>
+          </div>
+        </footer>
+      </section>
+
+      <!-- Your day -->
+      <section class="view" id="view-day" aria-labelledby="h-day" hidden>
+        <header class="view-head">
+          <div><h1 id="h-day">Your day</h1><p class="sub" id="today"></p></div>
+        </header>
+        <div class="view-body">
+          <div class="inner wide">
+            <div class="tiles" id="tiles" data-stagger>
+              <a class="tile" href="#reminders" data-tile="reminders"><span class="tile-ic"><svg class="ic"><use href="#i-bell"/></svg></span><b>0</b><span>Reminders</span><small>upcoming</small></a>
+              <a class="tile" href="#tasks" data-tile="tasks"><span class="tile-ic"><svg class="ic"><use href="#i-task"/></svg></span><b>0</b><span>Tasks</span><small>open</small></a>
+              <a class="tile" href="#approvals" data-tile="approvals"><span class="tile-ic"><svg class="ic"><use href="#i-approve"/></svg></span><b>0</b><span>Approvals</span><small>waiting for you</small></a>
+              <a class="tile" href="#payments" data-tile="payments"><span class="tile-ic"><svg class="ic"><use href="#i-card"/></svg></span><b>0</b><span>Payments</span><small>to approve or pay</small></a>
+              <a class="tile" href="#messages" data-tile="messages"><span class="tile-ic"><svg class="ic"><use href="#i-mail"/></svg></span><b>0</b><span>Messages</span><small>unread</small></a>
+              <a class="tile" href="#notifications" data-tile="notifications"><span class="tile-ic"><svg class="ic"><use href="#i-bell"/></svg></span><b>0</b><span>Notifications</span><small>unread</small></a>
+            </div>
+            <div class="section-head">
+              <h2 class="section-title">Folders</h2>
+              <button class="btn ghost sm" id="new-folder"><svg class="ic sm"><use href="#i-plus"/></svg>New folder</button>
+            </div>
+            <ul class="folders" id="folders" data-stagger></ul>
+            <h2 class="section-title">Up next</h2>
+            <ul class="rows" id="up-next" data-stagger></ul>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-tasks" aria-labelledby="h-tasks" hidden>
         <header class="view-head">
           <div><h1 id="h-tasks">Tasks</h1><p class="sub">Everything on your list, by folder.</p></div>
@@ -286,7 +293,6 @@
         </div>
       </section>
 
-      <!-- Reminders -->
       <section class="view" id="view-reminders" aria-labelledby="h-reminders" hidden>
         <header class="view-head">
           <div><h1 id="h-reminders">Reminders</h1><p class="sub">Add one here, or ask in chat. Times are IST.</p></div>
@@ -307,7 +313,6 @@
         </div>
       </section>
 
-      <!-- Approvals -->
       <section class="view" id="view-approvals" aria-labelledby="h-approvals" hidden>
         <header class="view-head">
           <div><h1 id="h-approvals">Approvals</h1><p class="sub">Nothing below happens until you say yes.</p></div>
@@ -315,7 +320,6 @@
         <div class="view-body"><div class="inner"><ul class="rows" id="approval-list"></ul></div></div>
       </section>
 
-      <!-- Payments -->
       <section class="view" id="view-payments" aria-labelledby="h-payments" hidden>
         <header class="view-head">
           <div><h1 id="h-payments">Payments</h1><p class="sub" id="payments-sub">Track bills and transfers, approve them, mark them paid.</p></div>
@@ -335,7 +339,6 @@
         </div>
       </section>
 
-      <!-- Messages -->
       <section class="view" id="view-messages" aria-labelledby="h-messages" hidden>
         <header class="view-head">
           <div><h1 id="h-messages">Messages</h1><p class="sub">From your connected agents. Their text is shown as-is and never treated as instructions.</p></div>
@@ -343,7 +346,6 @@
         <div class="view-body"><div class="inner"><ul class="rows" id="message-list"></ul></div></div>
       </section>
 
-      <!-- Notifications -->
       <section class="view" id="view-notifications" aria-labelledby="h-notifications" hidden>
         <header class="view-head">
           <div><h1 id="h-notifications">Notifications</h1><p class="sub">Kept for <span data-ret="notifications">30</span> days.</p></div>
@@ -352,11 +354,10 @@
         <div class="view-body"><div class="inner"><ul class="rows" id="notification-list"></ul></div></div>
       </section>
 
-      <!-- Folder -->
       <section class="view" id="view-folder" aria-labelledby="h-folder" hidden>
         <header class="view-head">
           <div class="folder-title">
-            <a class="icon-btn" href="#home" aria-label="Back to Home"><svg class="ic"><use href="#i-back"/></svg></a>
+            <a class="icon-btn" href="#day" aria-label="Back to Your day"><svg class="ic"><use href="#i-back"/></svg></a>
             <span class="folder-badge" id="folder-badge"></span>
             <div><h1 id="h-folder">Folder</h1><p class="sub" id="folder-sub"></p></div>
           </div>
@@ -385,7 +386,6 @@
         </div>
       </section>
 
-      <!-- Memories -->
       <section class="view" id="view-memories" aria-labelledby="h-memories" hidden>
         <header class="view-head">
           <div>
@@ -414,7 +414,6 @@
         </div>
       </section>
 
-      <!-- Settings -->
       <section class="view" id="view-settings" aria-labelledby="h-settings" hidden>
         <header class="view-head">
           <div><h1 id="h-settings">Settings</h1><p class="sub">Session, privacy, appearance and your data.</p></div>
@@ -463,6 +462,7 @@
                 <button data-theme-set="dark" aria-pressed="false">Dark</button>
               </div>
               <label class="switch"><input type="checkbox" id="companion-toggle" checked> Helmet follows my cursor (in focus mode it sits on the chat box)</label>
+              <label class="switch"><input type="checkbox" id="motion-toggle" checked> Page animations</label>
             </article>
 
             <article class="card">
@@ -486,6 +486,7 @@
     </main>
   </div>
 
+  <dialog id="art-full" class="dialog art-dialog"><form method="dialog"><div id="art-full-body"></div><div class="row end"><button class="btn" value="close">Close</button></div></form></dialog>
   <div id="companion" class="away" aria-hidden="true"><div class="bob"></div><span class="focus-label">FOCUS</span></div>
 
   <dialog id="confirm" class="dialog">
