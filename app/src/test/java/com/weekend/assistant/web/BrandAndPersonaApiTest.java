@@ -42,19 +42,19 @@ class BrandAndPersonaApiTest {
 
     @Test
     void personaUpdatesValidateAndReportMoodAndBudget() throws Exception {
-        mvc.perform(put("/api/agents/weekend/persona").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/features/optimal/persona").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mode\":\"FUNNY\",\"humor\":9,\"truth\":6,\"focus\":3,\"efficiency\":2,\"search\":\"MEMORY\",\"approval\":\"WRITES_AND_EXTERNAL\"}"))
                 .andExpect(status().isUnauthorized());
-        mvc.perform(put("/api/agents/weekend/persona").header("Authorization", bearer()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/features/optimal/persona").header("Authorization", bearer()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mode\":\"CUSTOM\",\"humor\":3,\"truth\":9,\"focus\":8,\"efficiency\":5,\"search\":\"WEB\",\"approval\":\"ALL\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.mood").value("SERIOUS")).andExpect(jsonPath("$.focusMode").value(true))
                 .andExpect(jsonPath("$.budget.label").value("Max")).andExpect(jsonPath("$.budget.strongModel").value(true));
-        mvc.perform(put("/api/agents/weekend/persona").header("Authorization", bearer()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/features/optimal/persona").header("Authorization", bearer()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mode\":\"NOPE\"}")).andExpect(status().isBadRequest());
-        mvc.perform(put("/api/agents/ghost/persona").header("Authorization", bearer()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/features/ghost/persona").header("Authorization", bearer()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mode\":\"WORK\",\"humor\":3,\"truth\":9,\"focus\":8,\"efficiency\":3,\"search\":\"WEB\",\"approval\":\"ALL\"}"))
                 .andExpect(status().isNotFound());
-        mvc.perform(get("/api/agents").header("Authorization", bearer())).andExpect(jsonPath("$.modes[0].mode").value("FUNNY"))
-                .andExpect(jsonPath("$.modes[0].mood").value("HAPPY")).andExpect(jsonPath("$.agents[0].persona.efficiency").value(5));
+        mvc.perform(get("/api/features").header("Authorization", bearer())).andExpect(jsonPath("$.modes[0].mode").value("FUNNY"))
+                .andExpect(jsonPath("$.modes[0].mood").value("HAPPY")).andExpect(jsonPath("$.features[0].persona.efficiency").value(5));
     }
 }

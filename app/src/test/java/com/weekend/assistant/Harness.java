@@ -1,6 +1,5 @@
 package com.weekend.assistant;
 
-import com.weekend.assistant.adapter.memory.InMemoryAgentProfileRepository;
 import com.weekend.assistant.adapter.memory.InMemoryAuditLog;
 import com.weekend.assistant.adapter.memory.InMemoryConversationRepository;
 import com.weekend.assistant.adapter.memory.InMemoryFolderRepository;
@@ -17,25 +16,26 @@ import com.weekend.assistant.agent.AgentService;
 import com.weekend.assistant.agent.ContextBuilder;
 import com.weekend.assistant.agent.CostCalculator;
 import com.weekend.assistant.agent.ModelRouter;
-import com.weekend.assistant.agents.AgentDirectory;
+import com.weekend.assistant.features.FeatureCatalog;
 import com.weekend.assistant.config.WeekendProperties;
-import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.inbox.InboxService;
 import com.weekend.assistant.inbox.NotificationService;
 import com.weekend.assistant.memory.MemoryService;
 import com.weekend.assistant.port.LlmProvider;
-import com.weekend.assistant.port.RemoteAgentClient;
+import com.weekend.assistant.port.NotionClient;
 import com.weekend.assistant.reminder.ReminderService;
 import com.weekend.assistant.retention.DataService;
 import com.weekend.assistant.retention.RetentionService;
 import com.weekend.assistant.security.SecretFilter;
-import com.weekend.assistant.tools.AgentDelegateTool;
 import com.weekend.assistant.tools.CurrentTimeTool;
 import com.weekend.assistant.tools.MathEvaluateTool;
 import com.weekend.assistant.tools.MathSolveTool;
 import com.weekend.assistant.tools.MathStatsTool;
 import com.weekend.assistant.tools.MemorySaveTool;
 import com.weekend.assistant.tools.MemorySearchTool;
+import com.weekend.assistant.tools.NotionCreatePageTool;
+import com.weekend.assistant.tools.NotionSearchTool;
+import com.weekend.assistant.tools.PaymentListTool;
 import com.weekend.assistant.tools.ReminderCreateTool;
 import com.weekend.assistant.tools.TaskCreateTool;
 import com.weekend.assistant.tools.TaskListTool;
@@ -51,7 +51,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Wires the real services with in-memory adapters, a test clock, any LLM and a fake remote-agent client. */
+/** Wires the real services with in-memory adapters, a test clock, any LLM and fakes for web search and Notion. */
 public final class Harness {
 
     public final TestFixtures.MutableClock clock = new TestFixtures.MutableClock(Instant.parse("2026-10-03T04:30:00Z"));
@@ -66,11 +66,10 @@ public final class Harness {
     public final InMemoryPaymentRepository paymentRepo = new InMemoryPaymentRepository();
     public final InMemoryInboxMessageRepository inboxRepo = new InMemoryInboxMessageRepository();
     public final InMemoryNotificationRepository notificationRepo = new InMemoryNotificationRepository();
-    public final InMemoryAgentProfileRepository agentRepo = new InMemoryAgentProfileRepository();
     public final LoggingReminderScheduler scheduler = new LoggingReminderScheduler();
     public final InMemoryAuditLog audit = new InMemoryAuditLog(clock);
     public final SecretFilter secrets = new SecretFilter();
-    public final FakeRemoteAgent remote = new FakeRemoteAgent();
+    public final FakeNotion notion = new FakeNotion();
     public final FakeWeb web = new FakeWeb();
     public final NotificationService notifications;
     public final InboxService inbox;
@@ -79,7 +78,7 @@ public final class Harness {
     public final FolderService folders;
     public final TaskService tasks;
     public final PaymentService payments;
-    public final AgentDirectory agents;
+    public final FeatureCatalog features;
     public final RetentionService retention;
     public final AgentService agent;
     public final ApprovalService approvals;
@@ -99,39 +98,40 @@ public final class Harness {
         folders = new FolderService(folderRepo, taskRepo, reminderRepo, audit, clock);
         tasks = new TaskService(taskRepo, folderRepo, secrets, audit, clock);
         payments = new PaymentService(paymentRepo, notifications, secrets, audit, clock);
-        agents = new AgentDirectory(agentRepo, secrets, audit, props, clock);
+        features = new FeatureCatalog(secrets, audit);
         retention = new RetentionService(messages, memoryRepo, toolCalls, notifications, inbox, audit, props, clock);
         ToolRegistry registry = new ToolRegistry(List.of(new CurrentTimeTool(clock, props), new MemorySearchTool(memories),
                 new MemorySaveTool(memories), new ReminderCreateTool(reminders, props), new TaskCreateTool(tasks, props),
-                new TaskListTool(tasks), new AgentDelegateTool(agents, remote, inbox, secrets), new MathEvaluateTool(),
-                new MathSolveTool(), new MathStatsTool(), new WebSearchTool(web, secrets)));
+                new TaskListTool(tasks), new MathEvaluateTool(), new MathSolveTool(), new MathStatsTool(), new WebSearchTool(web, secrets),
+                new NotionSearchTool(notion, secrets), new NotionCreatePageTool(notion, secrets), new PaymentListTool(payments)));
         agent = new AgentService(llm, registry, new ModelRouter(props), new ContextBuilder(props), new CostCalculator(props),
-                memories, conversations, messages, toolCalls, secrets, audit, agents, notifications, props, clock);
+                memories, conversations, messages, toolCalls, secrets, audit, features, notifications, props, clock);
         approvals = new ApprovalService(agent, payments);
         home = new HomeService(reminders, tasks, approvals, payments, inbox, notifications, folders);
         data = new DataService(conversations, messages, memoryRepo, reminderRepo, toolCalls,
-                new DataService.Workspace(folderRepo, taskRepo, paymentRepo, inboxRepo, notificationRepo), agents, audit, clock);
+                new DataService.Workspace(folderRepo, taskRepo, paymentRepo, inboxRepo, notificationRepo), features, audit, clock);
     }
 
-    /** Records what was sent; replies with a canned answer or fails on demand. */
-    public static final class FakeRemoteAgent implements RemoteAgentClient {
-        public final List<String> sent = new ArrayList<>();
-        public String reply = "remote reply";
-        public boolean fail;
-        public boolean healthy = true;
+    /** Notion stand-in: off unless {@code enabled}; records searches and created pages. */
+    public static final class FakeNotion implements NotionClient {
+        public final List<String> calls = new ArrayList<>();
+        public boolean enabled;
 
         @Override
-        public String send(AgentProfile agent, String message, String conversationId) {
-            if (fail) {
-                throw new RemoteAgentException("could not reach the agent (test)");
-            }
-            sent.add(message);
-            return reply;
+        public boolean enabled() {
+            return enabled;
         }
 
         @Override
-        public boolean healthy(AgentProfile agent) {
-            return healthy;
+        public List<Page> search(String query, int limit) {
+            calls.add("search:" + query);
+            return List.of(new Page("p1", "Weekly review", "https://www.notion.so/p1"));
+        }
+
+        @Override
+        public Page createPage(String title, String body) {
+            calls.add("create:" + title);
+            return new Page("p2", title, "https://www.notion.so/p2");
         }
     }
 

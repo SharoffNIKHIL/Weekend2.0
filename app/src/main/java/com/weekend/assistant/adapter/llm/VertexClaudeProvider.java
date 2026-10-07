@@ -4,7 +4,10 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.ContentBlock;
+import com.anthropic.models.messages.Base64ImageSource;
 import com.anthropic.models.messages.ContentBlockParam;
+import com.anthropic.models.messages.ImageBlockParam;
+import com.anthropic.models.messages.TextBlockParam;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
@@ -14,6 +17,7 @@ import com.anthropic.models.messages.ToolUseBlockParam;
 import com.anthropic.vertex.backends.VertexBackend;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.weekend.assistant.port.LlmProvider;
+import com.weekend.assistant.port.LlmProvider.ImagePart;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
@@ -68,7 +72,19 @@ public class VertexClaudeProvider implements LlmProvider {
     static List<MessageParam> toMessages(List<Turn> turns) {
         List<MessageParam> out = new ArrayList<>();
         for (Turn turn : turns) {
-            if (turn instanceof UserText u) {
+            if (turn instanceof UserText u && !u.images().isEmpty()) {
+                List<ContentBlockParam> blocks = new ArrayList<>();
+                for (ImagePart img : u.images()) {
+                    blocks.add(ContentBlockParam.ofImage(ImageBlockParam.builder()
+                            .source(Base64ImageSource.builder()
+                                    .mediaType(Base64ImageSource.MediaType.of(img.mediaType()))
+                                    .data(img.base64())
+                                    .build())
+                            .build()));
+                }
+                blocks.add(ContentBlockParam.ofText(TextBlockParam.builder().text(u.text()).build()));
+                out.add(MessageParam.builder().role(MessageParam.Role.USER).contentOfBlockParams(blocks).build());
+            } else if (turn instanceof UserText u) {
                 out.add(MessageParam.builder().role(MessageParam.Role.USER).content(u.text()).build());
             } else if (turn instanceof AssistantTurn a) {
                 List<ContentBlockParam> blocks = new ArrayList<>();

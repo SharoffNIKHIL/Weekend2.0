@@ -1,6 +1,6 @@
 package com.weekend.assistant.adapter.http;
 
-import com.weekend.assistant.agents.EndpointPolicy;
+import com.weekend.assistant.net.EndpointPolicy;
 import com.weekend.assistant.config.WeekendProperties;
 import com.weekend.assistant.port.WebSearchClient;
 import java.io.IOException;

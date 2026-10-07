@@ -1,4 +1,4 @@
-package com.weekend.assistant.agents;
+package com.weekend.assistant.net;
 
 import java.net.InetAddress;
 import java.net.URI;

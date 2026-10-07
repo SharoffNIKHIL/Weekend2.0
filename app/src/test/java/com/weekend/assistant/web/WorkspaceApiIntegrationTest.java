@@ -42,7 +42,7 @@ class WorkspaceApiIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/home", "/api/folders", "/api/tasks", "/api/payments", "/api/approvals", "/api/messages",
-            "/api/notifications", "/api/agents"})
+            "/api/notifications", "/api/features", "/api/me"})
     void everyNewEndpointNeedsAnOwnerSession(String path) throws Exception {
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
         mvc.perform(as(get(path))).andExpect(status().isOk());
@@ -112,33 +112,32 @@ class WorkspaceApiIntegrationTest {
     }
 
     @Test
-    void agentsCustomConditionsAndRemoteGuard() throws Exception {
-        mvc.perform(as(get("/api/agents"))).andExpect(jsonPath("$.agents[0].id").value("weekend"))
-                .andExpect(jsonPath("$.remoteAllowed").value(false)).andExpect(jsonPath("$.tools.length()").value(11)).andExpect(jsonPath("$.modes.length()").value(4))
-                .andExpect(jsonPath("$.webAllowed").value(false)).andExpect(jsonPath("$.agents[0].persona.mode").value("WORK"));
+    void featuresCarryCapabilitiesPersonaAndInstructions() throws Exception {
+        mvc.perform(as(get("/api/features"))).andExpect(jsonPath("$.features.length()").value(11))
+                .andExpect(jsonPath("$.features[0].id").value("optimal")).andExpect(jsonPath("$.modes.length()").value(4));
+        mvc.perform(as(get("/api/features/notes"))).andExpect(jsonPath("$.capabilities[0].id").value("NOTION"))
+                .andExpect(jsonPath("$.capabilities[0].kind").value("CONNECTOR")).andExpect(jsonPath("$.capabilities[0].available").value(false))
+                .andExpect(jsonPath("$.capabilities[0].reason").value(org.hamcrest.Matchers.containsString("WEEKEND_NOTION_TOKEN")));
+        mvc.perform(as(get("/api/features/image"))).andExpect(jsonPath("$.acceptsImages").value(true)).andExpect(jsonPath("$.makesArt").value(true))
+                .andExpect(jsonPath("$.capabilities[0].id").value("VISION")).andExpect(jsonPath("$.capabilities[0].available").value(true));
+        mvc.perform(as(get("/api/features/ghost"))).andExpect(status().isNotFound());
 
-        String id = JsonPath.read(body(post("/api/agents/custom").content(
-                "{\"name\":\"Planner\",\"instructions\":\"# Planner\\nPlan my week.\",\"conditions\":{\"allowedTools\":[\"task_list\"],\"confirmAllTools\":true,\"thinkHarder\":false,\"maxToolSteps\":3}}"), 201), "$.id");
-        String list = body(get("/api/agents"), 200);
-        assertThat(list).doesNotContain("Plan my week");                       // text only via /instructions
-        mvc.perform(as(get("/api/agents/" + id + "/instructions"))).andExpect(jsonPath("$.text").value("# Planner\nPlan my week."));
-        mvc.perform(as(put("/api/agents/" + id + "/conditions").content("{\"allowedTools\":null,\"confirmAllTools\":false,\"thinkHarder\":true,\"maxToolSteps\":2}")))
-                .andExpect(jsonPath("$.conditions.thinkHarder").value(true)).andExpect(jsonPath("$.instructionsTitle").value("Planner"));
+        mvc.perform(as(put("/api/features/coding/instructions").content("{\"text\":\"Prefer pytest.\"}")))
+                .andExpect(jsonPath("$.instructions").value("Prefer pytest.")).andExpect(jsonPath("$.customised").value(true));
+        mvc.perform(as(put("/api/features/coding/instructions").content("{\"text\":\"key AKIAABCDEFGHIJKLMNOP\"}"))).andExpect(status().isBadRequest());
+        mvc.perform(as(put("/api/features/coding/persona").content(
+                "{\"mode\":\"CUSTOM\",\"humor\":2,\"truth\":10,\"focus\":9,\"efficiency\":5,\"search\":\"WEB\",\"approval\":\"ALL\"}")))
+                .andExpect(jsonPath("$.focusMode").value(true)).andExpect(jsonPath("$.mood").value("SERIOUS"));
+        mvc.perform(as(post("/api/features/coding/reset"))).andExpect(jsonPath("$.customised").value(false))
+                .andExpect(jsonPath("$.persona.efficiency").value(4));
+        mvc.perform(as(put("/api/features/ghost/persona").content("{\"mode\":\"WORK\",\"humor\":3,\"truth\":9,\"focus\":8,\"efficiency\":3,\"search\":\"WEB\",\"approval\":\"ALL\"}")))
+                .andExpect(status().isNotFound());
 
-        mvc.perform(as(post("/api/chat").content("{\"message\":\"hi\",\"agentId\":\"" + id + "\"}"))).andExpect(jsonPath("$.agentName").value("Planner"));
-        mvc.perform(as(post("/api/chat").content("{\"message\":\"hi\",\"agentId\":\"ghost\"}"))).andExpect(status().isBadRequest());
-
-        mvc.perform(as(post("/api/agents/remote").content("{\"name\":\"X\",\"endpoint\":\"https://agents.example.com\"}")))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("allowed-hosts")));
-        mvc.perform(as(delete("/api/agents/weekend"))).andExpect(status().isNotFound());
-        mvc.perform(as(delete("/api/agents/" + id))).andExpect(status().isNoContent());
+        mvc.perform(as(post("/api/chat").content("{\"message\":\"hi\",\"featureId\":\"smooth\"}"))).andExpect(jsonPath("$.featureName").value("Smooth"));
+        mvc.perform(as(post("/api/chat").content("{\"message\":\"hi\",\"featureId\":\"ghost\"}"))).andExpect(status().isBadRequest());
+        mvc.perform(as(post("/api/chat").content("{\"message\":\"look\",\"featureId\":\"image\",\"images\":[\"data:image/png;base64,PGh0bWw+\"]}")))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("does not match")));
+        mvc.perform(as(get("/api/me"))).andExpect(jsonPath("$.highlights").isArray());
     }
 
-    @Test
-    void agentInboxRejectsUnknownTokensAndNeverUsesTheOwnerSession() throws Exception {
-        mvc.perform(post("/agent-inbox").contentType(MediaType.APPLICATION_JSON).content("{\"body\":\"hi\"}")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/agent-inbox").header("Authorization", "Bearer " + tokens.issue()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"body\":\"hi\"}")).andExpect(status().isUnauthorized());   // an owner session is not an agent token
-        mvc.perform(as(get("/api/messages"))).andExpect(jsonPath("$.length()").value(0));
-    }
 }

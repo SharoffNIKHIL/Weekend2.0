@@ -40,10 +40,28 @@ class NewToolsTest {
     }
 
     @Test
-    void agentDelegateAlwaysNeedsConfirmation() {
-        AgentDelegateTool tool = new AgentDelegateTool(h.agents, h.remote, h.inbox, h.secrets);
-        assertThat(tool.writes()).isTrue();
-        assertThat(tool.execute(Map.of("agent_id", "weekend", "message", "hi"), ctx).isError()).isTrue();
-        assertThat(tool.execute(Map.of("agent_id", "nope", "message", "hi"), ctx).content()).contains("No connected remote agent");
+    void paymentListIsReadOnly() {
+        PaymentListTool tool = new PaymentListTool(h.payments);
+        assertThat(tool.writes()).isFalse();
+        assertThat(tool.external()).isFalse();
+        assertThat(tool.execute(Map.of(), ctx).content()).isEqualTo("No payments tracked.");
+        h.payments.request("Rent", new java.math.BigDecimal("25000"), null, null, "owner");
+        assertThat(tool.execute(Map.of(), ctx).content()).contains("Rent: INR 25000.00 (pending_approval)");
+    }
+
+    @Test
+    void notionToolsAreExternalHiddenWhenOffAndRefuseSecrets() {
+        NotionSearchTool search = new NotionSearchTool(h.notion, h.secrets);
+        NotionCreatePageTool create = new NotionCreatePageTool(h.notion, h.secrets);
+        assertThat(search.external()).isTrue();
+        assertThat(search.writes()).isFalse();
+        assertThat(create.writes()).isTrue();
+        assertThat(search.available()).isFalse();
+        h.notion.enabled = true;
+        assertThat(create.available()).isTrue();
+        assertThat(create.execute(Map.of("title", "Keys", "text", "password: hunter2"), ctx).content()).contains("secret");
+        assertThat(create.execute(Map.of("title", "x".repeat(201), "text", "t"), ctx).isError()).isTrue();
+        assertThat(h.notion.calls).isEmpty();
+        assertThat(search.execute(Map.of("query", "review"), ctx).content()).contains("Weekly review — https://www.notion.so/p1");
     }
 }

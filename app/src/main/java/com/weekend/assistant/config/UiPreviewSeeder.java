@@ -1,8 +1,6 @@
 package com.weekend.assistant.config;
 
 import com.weekend.assistant.agent.AgentService;
-import com.weekend.assistant.agents.AgentDirectory;
-import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.domain.Folder;
 import com.weekend.assistant.domain.Memory;
 import com.weekend.assistant.domain.MemoryKind;
@@ -31,12 +29,11 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
  * UI preview environment ({@code ui} profile, used with {@code local}): fills the in-memory stores with
- * made-up demo data so every screen can be reviewed populated, and connects the loopback demo agent. Refuses to
+ * made-up demo data so every screen can be reviewed populated. Refuses to
  * run against a real model or with sessions switched on, so it can never mix demo rows into a real environment.
  */
 @Component
@@ -53,16 +50,13 @@ public class UiPreviewSeeder implements ApplicationRunner {
     private final PaymentService payments;
     private final InboxService inbox;
     private final NotificationService notifications;
-    private final AgentDirectory agents;
     private final AgentService agent;
     private final WeekendProperties props;
     private final Clock clock;
-    private final Environment env;
     private final OwnerProfile profile;
 
     public UiPreviewSeeder(MemoryService memories, ReminderService reminders, FolderService folders, TaskService tasks,
-            PaymentService payments, InboxService inbox, NotificationService notifications, AgentDirectory agents,
-            AgentService agent, WeekendProperties props, Clock clock, Environment env, OwnerProfile profile) {
+            PaymentService payments, InboxService inbox, NotificationService notifications, AgentService agent, WeekendProperties props, Clock clock, OwnerProfile profile) {
         this.profile = profile;
         this.memories = memories;
         this.reminders = reminders;
@@ -71,11 +65,9 @@ public class UiPreviewSeeder implements ApplicationRunner {
         this.payments = payments;
         this.inbox = inbox;
         this.notifications = notifications;
-        this.agents = agents;
         this.agent = agent;
         this.props = props;
         this.clock = clock;
-        this.env = env;
     }
 
     @Override
@@ -138,16 +130,12 @@ public class UiPreviewSeeder implements ApplicationRunner {
 
         agent.chat(null, "Remind me to renew the car insurance", false);
 
-        // Read at run time: the web server has picked its (possibly random) port by now.
-        String port = env.getProperty("local.server.port", env.getProperty("server.port", "8081"));
-        String endpoint = "http://127.0.0.1:" + port + "/demo-agent";
-        AgentProfile demo = agents.connectRemote("Demo agent", "A stand-in for another agent; runs inside this preview on loopback.", endpoint).agent();
-        inbox.receive(demo.id(), demo.name(), "Hello from the demo agent", "I am connected. Ask me something from Chat by picking \"Demo agent\".");
         inbox.receive("system", "Weekend", "Welcome to the UI preview", "Everything here is made-up demo data held in memory. Restart to reset.");
+        inbox.receive("system", "Weekend", "Tip: pick a feature", "Open Home and choose a feature: Research, Coding, Drawing, Image, Notes and more.");
         notifications.notify(NotificationKind.TASK, "Task due soon", "Review Terraform plan for dev", "#tasks");
         notifications.notify(NotificationKind.SYSTEM, "UI preview", "Demo data loaded", "#home");
 
-        log.info("ui preview: seeded {} folders, tasks, reminders, payments, inbox and the demo agent (in memory only)",
+        log.info("ui preview: seeded {} folders, tasks, reminders, payments, inbox (in memory only)",
                 folders.summaries().size());
     }
 }

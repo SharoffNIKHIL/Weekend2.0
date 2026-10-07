@@ -23,7 +23,18 @@ public interface LlmProvider {
     /** One element of the conversation sent to the model. */
     sealed interface Turn permits UserText, AssistantTurn, ToolResults {}
 
-    record UserText(String text) implements Turn {}
+    /** An image sent with a user turn (Claude vision). {@code base64} has no data-URL prefix. */
+    record ImagePart(String mediaType, String base64) {}
+
+    record UserText(String text, List<ImagePart> images) implements Turn {
+        public UserText {
+            images = images == null ? List.of() : List.copyOf(images);
+        }
+
+        public UserText(String text) {
+            this(text, List.of());
+        }
+    }
 
     record AssistantTurn(String text, List<ToolUse> toolUses) implements Turn {}
 

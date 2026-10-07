@@ -10,7 +10,9 @@ import java.util.Map;
  * the machine. It recognises a few intents so the agent loop and tools can be exercised end to end:
  * "time"/"date" → current_time, "what do you know about X" → memory_search, "remind me" → reminder_create,
  * "add task X" → task_create, "list my tasks" → task_list, "delegate to <agent_id>: X" → agent_delegate,
- * "calculate X" → math_evaluate, "solve X" → math_solve, "stats X" → math_stats, "search X" → web_search.
+ * "calculate X" → math_evaluate, "solve X" → math_solve, "stats X" → math_stats, "search X" → web_search,
+ * "draw X" → a 4K SVG artwork, attached images → a pixel-level description (format, size, colour, brightness),
+ * "notes X" → notion_search, "save note T: X" → notion_create_page, "my payments" → payment_list.
  */
 public class ScriptedLlmProvider implements LlmProvider {
 
@@ -23,6 +25,28 @@ public class ScriptedLlmProvider implements LlmProvider {
         }
         String text = last instanceof UserText u ? u.text() : "";
         String lower = text.toLowerCase(Locale.ROOT);
+        if (last instanceof UserText u && !u.images().isEmpty()) {
+            StringBuilder sb = new StringBuilder("(local model) I looked at ").append(u.images().size())
+                    .append(u.images().size() == 1 ? " image" : " images").append(":\n");
+            u.images().forEach(img -> sb.append("- ").append(LocalVision.describe(img)).append('\n'));
+            return new LlmResponse(sb.toString().strip(), List.of(), "end_turn", 400, 60);
+        }
+        for (String verb : new String[] {"draw ", "paint ", "create art ", "make art "}) {
+            if (lower.startsWith(verb)) {
+                return new LlmResponse("```svg\n" + LocalArt.svg(text) + "\n```\nAn original 4K landscape for \"" + text.substring(verb.length())
+                        + "\": layered ranges, glow and a reflection. Export it as a 4K PNG or SVG.", List.of(), "end_turn", 80, 900);
+            }
+        }
+        if (lower.startsWith("my payments")) {
+            return tool("payment_list", Map.of());
+        }
+        if (lower.startsWith("notes ")) {
+            return tool("notion_search", Map.of("query", text.substring(6)));
+        }
+        if (lower.startsWith("save note ") && text.indexOf(':') > 10) {
+            int c = text.indexOf(':');
+            return tool("notion_create_page", Map.of("title", text.substring(10, c).strip(), "text", text.substring(c + 1).strip()));
+        }
         for (String[] intent : new String[][] {{"calculate ", "math_evaluate", "expression"}, {"solve ", "math_solve", "equation"},
                 {"stats ", "math_stats", "numbers"}, {"search ", "web_search", "query"}}) {
             if (lower.startsWith(intent[0])) {

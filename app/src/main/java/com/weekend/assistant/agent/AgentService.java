@@ -1,14 +1,11 @@
 package com.weekend.assistant.agent;
 
-import com.weekend.assistant.agents.AgentDirectory;
 import com.weekend.assistant.config.WeekendProperties;
-import com.weekend.assistant.domain.AgentConditions;
-import com.weekend.assistant.domain.AgentKind;
 import com.weekend.assistant.domain.AgentPersona;
 import com.weekend.assistant.domain.ApprovalRange;
 import com.weekend.assistant.domain.SearchRange;
-import com.weekend.assistant.domain.AgentProfile;
 import com.weekend.assistant.domain.Conversation;
+import com.weekend.assistant.features.FeatureCatalog;
 import com.weekend.assistant.domain.Memory;
 import com.weekend.assistant.domain.Message;
 import com.weekend.assistant.domain.NotificationKind;
@@ -20,6 +17,8 @@ import com.weekend.assistant.port.AuditLog;
 import com.weekend.assistant.port.ConversationRepository;
 import com.weekend.assistant.port.LlmProvider;
 import com.weekend.assistant.port.LlmProvider.AssistantTurn;
+import com.weekend.assistant.port.LlmProvider.ImagePart;
+import com.weekend.assistant.port.LlmProvider.UserText;
 import com.weekend.assistant.port.LlmProvider.LlmRequest;
 import com.weekend.assistant.port.LlmProvider.LlmResponse;
 import com.weekend.assistant.port.LlmProvider.ToolResult;
@@ -37,9 +36,10 @@ import com.weekend.assistant.tools.ToolRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.net.URI;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,11 +49,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
 
 /**
- * The agent loop (DESIGN §7.2): build context → pick a model → call the LLM → run allowed tools →
- * repeat (max N steps) → save the turn, memories, tool log and audit entries. Write-tools pause
- * and return a {@link PendingAction} for the owner to confirm. Each chat runs as one agent (AgentDirectory):
- * its instructions are added after the fixed safety rules, and its conditions narrow the tools, force
- * confirmation or pick the stronger model. Chats with a REMOTE agent always pause for the owner's yes (🔓).
+ * The agent loop (DESIGN §7.2): build context → pick a model → call the LLM → run allowed tools → repeat → save the
+ * turn, memories, tool log and audit entries. There is one agent; the chosen feature (Optimal, Research, Drawing …)
+ * adds its guidelines, persona and attached plugins/connectors. Write-tools, and anything outside the approval range,
+ * pause and return a {@link PendingAction} for the owner to confirm. Images ride along on the user turn only.
  */
 @Service
 public class AgentService {
@@ -69,7 +68,7 @@ public class AgentService {
     private final ToolCallRepository toolCalls;
     private final SecretFilter secrets;
     private final AuditLog audit;
-    private final AgentDirectory agents;
+    private final FeatureCatalog features;
     private final NotificationService notifications;
     private final WeekendProperties props;
     private final Clock clock;
@@ -79,7 +78,7 @@ public class AgentService {
     public AgentService(LlmProvider llm, ToolRegistry tools, ModelRouter router, ContextBuilder context,
             CostCalculator costs, MemoryService memories, ConversationRepository conversations,
             MessageRepository messages, ToolCallRepository toolCalls, SecretFilter secrets, AuditLog audit,
-            AgentDirectory agents, NotificationService notifications, WeekendProperties props, Clock clock) {
+            FeatureCatalog features, NotificationService notifications, WeekendProperties props, Clock clock) {
         this.llm = llm;
         this.tools = tools;
         this.router = router;
@@ -91,19 +90,22 @@ public class AgentService {
         this.toolCalls = toolCalls;
         this.secrets = secrets;
         this.audit = audit;
-        this.agents = agents;
+        this.features = features;
         this.notifications = notifications;
         this.props = props;
         this.clock = clock;
     }
 
     public ChatResult chat(String conversationIdOrNull, String userText, boolean thinkHarder) {
-        return chat(conversationIdOrNull, userText, thinkHarder, null);
+        return chat(conversationIdOrNull, userText, thinkHarder, null, List.of());
     }
 
-    public ChatResult chat(String conversationIdOrNull, String userText, boolean thinkHarder, String agentIdOrNull) {
-        AgentProfile agent = agents.find(agentIdOrNull).orElseThrow(() -> new IllegalArgumentException("unknown agent"));
-        AgentConditions cond = agent.conditions();
+    public ChatResult chat(String conversationIdOrNull, String userText, boolean thinkHarder, String featureIdOrNull,
+            List<ImagePart> images) {
+        FeatureCatalog.Effective fx = features.find(featureIdOrNull).orElseThrow(() -> new IllegalArgumentException("unknown feature"));
+        List<ImagePart> pictures = images == null ? List.of() : images;
+        Set<String> attached = new HashSet<>();
+        fx.feature().capabilities().forEach(c -> attached.addAll(com.weekend.assistant.features.Capability.valueOf(c).tools()));
         enforceDailyCap();
         Instant now = clock.instant();
         String safeText = secrets.redact(userText); // P4: secrets never reach the LLM, storage or titles
@@ -111,28 +113,27 @@ public class AgentService {
                 .flatMap(conversations::findById)
                 .orElseGet(() -> conversations.save(new Conversation(UUID.randomUUID().toString(), title(safeText), now, false)));
 
-        AgentPersona persona = agent.persona();
+        AgentPersona persona = fx.persona();
         AgentPersona.Budget budget = persona.budget();
         List<Message> history = messages.recent(conv.id(), budget.historyTurns());
+        String stored = pictures.isEmpty() ? safeText : safeText + "\n[" + pictures.size() + " image" + (pictures.size() == 1 ? "" : "s")
+                + " attached; images are not stored]";
         Message userMsg = messages.save(new Message(UUID.randomUUID().toString(), conv.id(), Role.USER,
-                safeText, null, 0, 0, BigDecimal.ZERO, now));
+                stored, null, 0, 0, BigDecimal.ZERO, now));
         boolean memorySaved = memories.extractExplicit(userText, userMsg.id()).isPresent();
-        if (agent.kind() == AgentKind.REMOTE) {
-            return toRemote(agent, conv, safeText, memorySaved);
-        }
 
         List<Memory> relevant = context(safeText, budget.memories());
-        String model = router.choose(safeText, thinkHarder || cond.thinkHarder() || budget.strongModel());
-        String system = context.systemPrompt(relevant, agent);
+        String model = router.choose(safeText, thinkHarder || budget.strongModel());
+        String system = context.systemPrompt(relevant, fx);
         List<ToolSpec> specs = tools.specs().stream()
-                .filter(t -> cond.allows(t.name()) && inRange(persona.search(), t.name()) && tools.find(t.name()).map(Tool::available).orElse(false))
+                .filter(t -> attached.contains(t.name()) && inRange(persona.search(), t.name()) && tools.find(t.name()).map(Tool::available).orElse(false))
                 .toList();
         int maxSteps = Math.min(props.agent().maxToolSteps(), budget.maxToolSteps());
-        if (agent.kind() == AgentKind.CUSTOM) {
-            maxSteps = Math.min(maxSteps, cond.maxToolSteps());
-        }
         int maxTokens = Math.min(props.llm().maxOutputTokens(), budget.maxTokens());
         List<Turn> turns = new ArrayList<>(context.turns(history, safeText));
+        if (!pictures.isEmpty()) {
+            turns.set(turns.size() - 1, new UserText(safeText, pictures));
+        }
 
         List<String> used = new ArrayList<>();
         int tokensIn = 0;
@@ -164,11 +165,15 @@ public class AgentService {
                     results.add(new ToolResult(use.id(), "Tool not available right now: " + use.name(), true));
                     continue;
                 }
-                if (!cond.allows(use.name()) || !inRange(persona.search(), use.name())) {
-                    results.add(new ToolResult(use.id(), "Tool not allowed for this agent: " + use.name(), true));
+                if (!attached.contains(use.name())) {
+                    results.add(new ToolResult(use.id(), "Tool not attached to the " + fx.feature().name() + " feature: " + use.name(), true));
                     continue;
                 }
-                if (needsApproval(tool.get(), cond.confirmAllTools(), persona.approval())) {
+                if (!inRange(persona.search(), use.name())) {
+                    results.add(new ToolResult(use.id(), "Tool outside the search range set for " + fx.feature().name() + ": " + use.name(), true));
+                    continue;
+                }
+                if (needsApproval(tool.get(), persona.approval())) {
                     awaiting = hold(conv.id(), use.name(), use.input(),
                             "Run " + use.name() + " with " + secrets.redact(String.valueOf(use.input())) + "?");
                     pendingRange.put(awaiting.id(), persona.search());
@@ -190,7 +195,7 @@ public class AgentService {
         messages.save(new Message(UUID.randomUUID().toString(), conv.id(), Role.ASSISTANT, reply, model,
                 tokensIn, tokensOut, cost, clock.instant()));
         audit.append("agent", "chat.turn", conv.id());
-        return new ChatResult(conv.id(), reply, model, used, awaiting, cost, memorySaved, agent.id(), agent.name());
+        return new ChatResult(conv.id(), reply, model, used, awaiting, cost, memorySaved, fx.feature().id(), fx.feature().name());
     }
 
     /** Pinned memories (your profile) always come first, then the ones relevant to this message. */
@@ -201,7 +206,7 @@ public class AgentService {
         return List.copyOf(out.values());
     }
 
-    /** Which tools an agent's search range lets it see: OFF = none that look things up; MEMORY = local only. */
+    /** Which tools a feature's search range lets it see: OFF = none that look things up; MEMORY = local only. */
     static boolean inRange(SearchRange range, String tool) {
         boolean lookup = tool.equals("memory_search") || tool.equals("task_list");
         boolean web = tool.equals("web_search");
@@ -213,24 +218,11 @@ public class AgentService {
     }
 
     /** Writes always ask; external tools ask unless the range is WRITES_ONLY; ALL asks for everything. */
-    static boolean needsApproval(Tool tool, boolean confirmAll, ApprovalRange range) {
-        if (tool.writes() || confirmAll || range == ApprovalRange.ALL) {
+    static boolean needsApproval(Tool tool, ApprovalRange range) {
+        if (tool.writes() || range == ApprovalRange.ALL) {
             return true;
         }
         return tool.external() && range != ApprovalRange.WRITES_ONLY;
-    }
-
-    /** A chat addressed to a remote agent: nothing is sent until the owner approves (🔓 data exit). */
-    private ChatResult toRemote(AgentProfile agent, Conversation conv, String safeText, boolean memorySaved) {
-        String host = URI.create(agent.endpoint()).getHost();
-        PendingAction awaiting = hold(conv.id(), "agent_delegate", Map.of("agent_id", agent.id(), "message", safeText),
-                "Send your message to " + agent.name() + " (" + host + ")? It leaves Weekend.");
-        String reply = "This message goes to " + agent.name() + ", outside Weekend. Approve it to send.";
-        messages.save(new Message(UUID.randomUUID().toString(), conv.id(), Role.ASSISTANT, reply, "remote:" + agent.id(),
-                0, 0, BigDecimal.ZERO, clock.instant()));
-        audit.append("agent", "chat.remote_hold", conv.id());
-        return new ChatResult(conv.id(), reply, "remote:" + agent.name(), List.of(), awaiting, BigDecimal.ZERO, memorySaved,
-                agent.id(), agent.name());
     }
 
     private PendingAction hold(String conversationId, String tool, Map<String, Object> input, String summary) {

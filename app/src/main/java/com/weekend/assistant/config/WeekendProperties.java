@@ -22,7 +22,7 @@ public record WeekendProperties(
         Agent agent,
         Retention retention,
         Security security,
-        Agents agents,
+        Notion notion,
         Pressure pressure,
         Web web,
         Owner owner) {
@@ -31,6 +31,7 @@ public record WeekendProperties(
         pressure = pressure == null ? new Pressure(4, Duration.ofSeconds(10), 2, Duration.ofMillis(400)) : pressure;
         web = web == null ? new Web(List.of(), "https://en.wikipedia.org", Duration.ofSeconds(10)) : web;
         owner = owner == null ? new Owner(null, null) : owner;
+        notion = notion == null ? new Notion(null, null, null, null, null) : notion;
     }
 
     public ZoneId zone() {
@@ -71,28 +72,26 @@ public record WeekendProperties(
     public record Security(String sessionKey, Duration sessionTtl, boolean requireSession) {}
 
     /**
-     * Agents (DESIGN §13). {@code allowedHosts}: the only hosts ("host" or "host:port") remote agents may live on;
-     * empty = no remote agents. {@code custom}: owner agents defined in config, e.g. one whose instructions come
-     * from a CLAUDE.md file read at start-up (never committed).
+     * Notion connector (🔓 P7: note text leaves Weekend). Off until {@code token} is set (an internal-integration secret
+     * from Notion, kept in Secret Manager / env WEEKEND_NOTION_TOKEN — never in code). New pages go under
+     * {@code parentPageId}. {@code version} is the Notion-Version header.
      */
-    public record Agents(List<String> allowedHosts, Duration timeout, List<CustomAgent> custom) {
-        public Agents {
-            allowedHosts = allowedHosts == null ? List.of() : List.copyOf(allowedHosts);
-            timeout = timeout == null ? Duration.ofSeconds(20) : timeout;
-            custom = custom == null ? List.of() : List.copyOf(custom);
+    public record Notion(String token, String baseUrl, String version, String parentPageId, Duration timeout) {
+        public Notion {
+            baseUrl = baseUrl == null || baseUrl.isBlank() ? "https://api.notion.com" : baseUrl;
+            version = version == null || version.isBlank() ? "2022-06-28" : version;
+            timeout = timeout == null ? Duration.ofSeconds(15) : timeout;
+        }
+
+        public boolean enabled() {
+            return token != null && !token.isBlank();
+        }
+
+        @Override
+        public String toString() {
+            return "Notion[baseUrl=" + baseUrl + ", version=" + version + ", token=" + (enabled() ? "****" : "none") + "]";
         }
     }
-
-    /** A config-defined custom agent. Empty {@code instructionsFile} = the agent is skipped. */
-    public record CustomAgent(
-            String id,
-            String name,
-            String description,
-            String instructionsFile,
-            List<String> allowedTools,
-            boolean confirmAllTools,
-            boolean thinkHarder,
-            Integer maxToolSteps) {}
 
     /**
      * High-pressure handling: at most {@code maxConcurrentChats} model calls at once (others wait up to
